@@ -1,7 +1,7 @@
-module "github_repo" {
-  source = "./github_repo"
+module "cococash_infra" {
+  source = "./cococash-infra"
 
   providers = {
-    github = github
+    aws = aws
   }
 }

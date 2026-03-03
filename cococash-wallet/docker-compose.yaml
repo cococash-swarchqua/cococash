@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: wallet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cocouser
+      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_DB: cococash_wallet_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cococash-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cocouser -d cococash_wallet_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wallet:
+    build: .
+    container_name: cococash-wallet
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      SHUTDOWN_TIMEOUT_MS: 15000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: cocouser
+      DB_PASSWORD: yourpassword
+      DB_NAME: cococash_wallet_db
+    ports:
+      - "3000:3000"
+    networks:
+      - cococash-net
+
+networks:
+  cococash-net:
+    driver: bridge
+
+volumes:
+  postgres_data:

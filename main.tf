@@ -40,3 +40,19 @@ module "cococash_transaction_infra" {
     aws = aws
   }
 }
+
+# API Gateway (HTTP API v2)
+module "cococash_api_gateway" {
+  source = "./cococash-ag"
+
+  vpc_id                  = module.cococash_infra.vpc_id
+  private_app_subnet_id_1 = module.cococash_infra.private_app_subnet_id_1
+  private_app_subnet_id_2 = module.cococash_infra.private_app_subnet_id_2
+  wallet_alb_listener_arn = module.cococash_wallet_infra.wallet_alb_listener_arn
+  wallet_alb_dns          = module.cococash_wallet_infra.wallet_alb_dns
+  wallet_alb_sg_id        = module.cococash_wallet_infra.wallet_alb_sg_id
+
+  providers = {
+    aws = aws
+  }
+}

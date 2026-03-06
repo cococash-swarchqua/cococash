@@ -689,3 +689,18 @@ output "wallet_alb_dns" {
   value       = aws_lb.wallet.dns_name
   description = "DNS name for the wallet ALB"
 }
+
+output "wallet_alb_listener_arn" {
+  value       = aws_lb_listener.wallet_http.arn
+  description = "Wallet ALB HTTP listener ARN"
+}
+
+output "wallet_alb_arn" {
+  value       = aws_lb.wallet.arn
+  description = "Wallet ALB ARN"
+}
+
+output "wallet_alb_sg_id" {
+  value       = aws_security_group.wallet_alb.id
+  description = "Wallet ALB security group ID"
+}

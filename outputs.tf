@@ -36,3 +36,9 @@ output "dynamodb_table_name" {
   value       = module.cococash_transaction_infra.dynamodb_table_name
   description = "DynamoDB transactions table name"
 }
+
+# API Gateway
+output "api_gateway_url" {
+  value       = module.cococash_api_gateway.api_gateway_url
+  description = "API Gateway invoke URL"
+}

@@ -42,3 +42,19 @@ output "api_gateway_url" {
   value       = module.cococash_api_gateway.api_gateway_url
   description = "API Gateway invoke URL"
 }
+
+# Auth (Cognito)
+output "cognito_user_pool_id" {
+  value       = module.cococash_auth.user_pool_id
+  description = "Cognito User Pool ID"
+}
+
+output "cognito_app_client_id" {
+  value       = module.cococash_auth.app_client_id
+  description = "Cognito App Client ID"
+}
+
+output "cognito_user_pool_endpoint" {
+  value       = module.cococash_auth.user_pool_endpoint
+  description = "Cognito User Pool endpoint (issuer)"
+}

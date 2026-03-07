@@ -40,6 +40,36 @@ variable "wallet_alb_sg_id" {
   description = "Wallet ALB security group ID"
 }
 
+variable "cognito_user_pool_endpoint" {
+  type        = string
+  description = "Cognito User Pool endpoint for JWT issuer"
+}
+
+variable "cognito_app_client_id" {
+  type        = string
+  description = "Cognito App Client ID for JWT audience"
+}
+
+variable "register_lambda_invoke_arn" {
+  type        = string
+  description = "Register Lambda invoke ARN"
+}
+
+variable "register_lambda_function_name" {
+  type        = string
+  description = "Register Lambda function name"
+}
+
+variable "login_lambda_invoke_arn" {
+  type        = string
+  description = "Login Lambda invoke ARN"
+}
+
+variable "login_lambda_function_name" {
+  type        = string
+  description = "Login Lambda function name"
+}
+
 # -----------------------------------------------
 # Security Group for VPC Link
 # -----------------------------------------------
@@ -125,6 +155,91 @@ resource "aws_apigatewayv2_integration" "wallet_alb" {
 }
 
 # -----------------------------------------------
+# JWT Authorizer - Cognito
+# -----------------------------------------------
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.cococash.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "${local.project_name}-cognito-authorizer"
+
+  jwt_configuration {
+    audience = [var.cognito_app_client_id]
+    issuer   = "https://${var.cognito_user_pool_endpoint}"
+  }
+}
+
+# -----------------------------------------------
+# Integration - Register Lambda
+# -----------------------------------------------
+resource "aws_apigatewayv2_integration" "register_lambda" {
+  api_id                 = aws_apigatewayv2_api.cococash.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = var.register_lambda_invoke_arn
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+  description            = "Forward to Register Lambda"
+}
+
+# -----------------------------------------------
+# Integration - Login Lambda
+# -----------------------------------------------
+resource "aws_apigatewayv2_integration" "login_lambda" {
+  api_id                 = aws_apigatewayv2_api.cococash.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = var.login_lambda_invoke_arn
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+  description            = "Forward to Login Lambda"
+}
+
+# -----------------------------------------------
+# Lambda Permissions (allow API Gateway to invoke)
+# -----------------------------------------------
+resource "aws_lambda_permission" "apigw_register" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.register_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.cococash.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "apigw_login" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.login_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.cococash.execution_arn}/*/*"
+}
+
+# -----------------------------------------------
+# Routes - Auth (NO JWT - public endpoints)
+# -----------------------------------------------
+
+# POST /v1/auth/register → Register Lambda
+resource "aws_apigatewayv2_route" "auth_register" {
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "POST /v1/auth/register"
+  target    = "integrations/${aws_apigatewayv2_integration.register_lambda.id}"
+}
+
+# POST /v1/auth/login → Login Lambda
+resource "aws_apigatewayv2_route" "auth_login" {
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "POST /v1/auth/login"
+  target    = "integrations/${aws_apigatewayv2_integration.login_lambda.id}"
+}
+
+# -----------------------------------------------
+# Route - Internal account creation (used by Register Lambda)
+# -----------------------------------------------
+resource "aws_apigatewayv2_route" "post_accounts_internal" {
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "POST /v1/accounts/internal"
+  target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+}
+
+# -----------------------------------------------
 # Routes - Transfers
 # -----------------------------------------------
 
@@ -133,6 +248,9 @@ resource "aws_apigatewayv2_route" "post_transfers" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "POST /v1/transfers"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/transfers/{transferId}
@@ -140,6 +258,9 @@ resource "aws_apigatewayv2_route" "get_transfer_by_id" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/transfers/{transferId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/transfers/account/{accountId}
@@ -147,6 +268,9 @@ resource "aws_apigatewayv2_route" "get_transfers_by_account" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/transfers/account/{accountId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # -----------------------------------------------
@@ -158,6 +282,9 @@ resource "aws_apigatewayv2_route" "post_accounts" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "POST /v1/accounts"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/accounts/{accountId}/balance
@@ -165,6 +292,9 @@ resource "aws_apigatewayv2_route" "get_account_balance" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/accounts/{accountId}/balance"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/accounts/user/{userId}
@@ -172,6 +302,9 @@ resource "aws_apigatewayv2_route" "get_account_by_user" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/accounts/user/{userId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # -----------------------------------------------

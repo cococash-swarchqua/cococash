@@ -1,0 +1,59 @@
+# SNS Topics - CocoCash Event Bus
+# RF-14: Publish domain events
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SNS Topics for CocoCash event-driven architecture
+
+Resources:
+  # Topic for transfer events (initiated, completed, failed)
+  TransferEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: cococash-transfer-events
+      DisplayName: CocoCash Transfer Events
+      Tags:
+        - Key: Project
+          Value: cococash
+        - Key: Component
+          Value: event-bus
+
+  # Topic for account events (created, updated)
+  AccountEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: cococash-account-events
+      DisplayName: CocoCash Account Events
+      Tags:
+        - Key: Project
+          Value: cococash
+        - Key: Component
+          Value: event-bus
+
+  # SNS Topic Policy - Allow services to publish
+  TransferEventsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref TransferEventsTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowWalletServicePublish
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref TransferEventsTopic
+
+Outputs:
+  TransferEventsTopicArn:
+    Description: ARN of the transfer events SNS topic
+    Value: !Ref TransferEventsTopic
+    Export:
+      Name: CocoCash-TransferEventsTopic-Arn
+
+  AccountEventsTopicArn:
+    Description: ARN of the account events SNS topic
+    Value: !Ref AccountEventsTopic
+    Export:
+      Name: CocoCash-AccountEventsTopic-Arn

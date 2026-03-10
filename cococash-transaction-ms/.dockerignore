@@ -1,0 +1,8 @@
+.git/
+.env
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+infra/
+transaction-ms

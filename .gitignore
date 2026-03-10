@@ -10,7 +10,7 @@
 *.userosscache
 *.sln.docstates
 *.env
-
+node_modules/
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -455,3 +455,7 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+*.pem
+*.tfstate
+*.tfstate.backup
+.env

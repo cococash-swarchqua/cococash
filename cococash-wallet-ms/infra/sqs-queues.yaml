@@ -1,0 +1,90 @@
+# SQS Queues - CocoCash Event Bus
+# RF-09: Async event-driven processing
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SQS Queues for CocoCash event consumption
+
+Parameters:
+  TransferEventsTopicArn:
+    Type: String
+    Description: ARN of the SNS transfer events topic
+
+Resources:
+  # Main queue for wallet service to consume transfer events
+  WalletTransferQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: cococash-wallet-transfer-queue
+      VisibilityTimeout: 30
+      MessageRetentionPeriod: 345600  # 4 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt WalletTransferDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Project
+          Value: cococash
+        - Key: Component
+          Value: wallet-ms
+
+  # Dead Letter Queue for failed messages
+  WalletTransferDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: cococash-wallet-transfer-dlq
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Project
+          Value: cococash
+        - Key: Component
+          Value: wallet-ms
+
+  # Queue policy to allow SNS to send messages
+  WalletTransferQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref WalletTransferQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowSNSMessages
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt WalletTransferQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref TransferEventsTopicArn
+
+  # Subscribe queue to SNS topic
+  WalletTransferSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref TransferEventsTopicArn
+      Protocol: sqs
+      Endpoint: !GetAtt WalletTransferQueue.Arn
+      RawMessageDelivery: false
+      FilterPolicy:
+        eventType:
+          - transfer.initiated
+
+Outputs:
+  WalletTransferQueueUrl:
+    Description: URL of the wallet transfer SQS queue
+    Value: !Ref WalletTransferQueue
+    Export:
+      Name: CocoCash-WalletTransferQueue-Url
+
+  WalletTransferQueueArn:
+    Description: ARN of the wallet transfer SQS queue
+    Value: !GetAtt WalletTransferQueue.Arn
+    Export:
+      Name: CocoCash-WalletTransferQueue-Arn
+
+  WalletTransferDLQUrl:
+    Description: URL of the dead letter queue
+    Value: !Ref WalletTransferDLQ
+    Export:
+      Name: CocoCash-WalletTransferDLQ-Url

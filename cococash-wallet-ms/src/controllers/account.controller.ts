@@ -19,16 +19,9 @@ export class AccountController {
         /**
          * POST /accounts
          * RF-04: Create wallet upon registration
-         * Protected by JWT at API Gateway level
+         * Called by Auth Service when user registers
          */
         this.router.post('/', this.createAccount.bind(this));
-
-        /**
-         * POST /accounts/internal
-         * Called by Register Lambda to create wallet on signup
-         * Protected at network level (only API Gateway → ALB)
-         */
-        this.router.post('/internal', this.createAccount.bind(this));
 
         /**
          * GET /accounts/:accountId/balance

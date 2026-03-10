@@ -459,6 +459,3 @@ terraform.rc
 *.tfstate
 *.tfstate.backup
 .env
-
-# Zip files
-*.zip

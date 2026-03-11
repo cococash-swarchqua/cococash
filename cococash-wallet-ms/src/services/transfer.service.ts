@@ -213,4 +213,20 @@ export class TransferService {
     async getTransferHistory(accountId: string): Promise<Transfer[]> {
         return this.transferRepository.findByAccountId(accountId);
     }
+
+    /**
+     * Get account by public account number.
+     * Used for ownership check before initiating a transfer.
+     */
+    async getAccountByNumber(accountNumber: string) {
+        return this.accountRepository.findByAccountNumber(accountNumber);
+    }
+
+    /**
+     * Get account by ID.
+     * Used for ownership check on transfer history queries.
+     */
+    async getAccountById(accountId: string) {
+        return this.accountRepository.findById(accountId);
+    }
 }

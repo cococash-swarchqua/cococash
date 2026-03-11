@@ -29,10 +29,10 @@ export class AccountService {
      * RF-04: Create digital wallet upon successful registration
      */
     async createAccount(userId: string, initialBalance: number = 0): Promise<Account> {
-        // Check if user already has an account
+        // Idempotent: if JITP already provisioned the wallet, just return it
         const existingAccount = await this.accountRepository.findByUserId(userId);
         if (existingAccount) {
-            throw new Error(`User ${userId} already has a wallet account`);
+            return existingAccount;
         }
 
         const request: CreateAccountRequest = {
@@ -51,6 +51,14 @@ export class AccountService {
         });
 
         return account;
+    }
+
+    /**
+     * Get account by ID
+     * Used for ownership checks in controllers
+     */
+    async getAccountById(accountId: string): Promise<Account | null> {
+        return this.accountRepository.findById(accountId);
     }
 
     /**
@@ -73,9 +81,24 @@ export class AccountService {
     }
 
     /**
-     * Get account by user ID
+     * Get account by user ID.
+     * JITP (Just-In-Time Provisioning): if the wallet doesn't exist
+     * (edge case — e.g. frontend skipped POST /accounts), create it now.
      */
-    async getAccountByUserId(userId: string): Promise<Account | null> {
-        return this.accountRepository.findByUserId(userId);
+    async getAccountByUserId(userId: string): Promise<Account> {
+        let account = await this.accountRepository.findByUserId(userId);
+
+        if (!account) {
+            console.warn(`[JITP] Wallet not found for user ${userId}, provisioning...`);
+            account = await this.accountRepository.create({ userId, initialBalance: 0 });
+            await this.eventPublisher.publishAccountCreated({
+                eventType: 'account.created',
+                accountId: account.id,
+                userId: account.userId,
+                timestamp: new Date()
+            });
+        }
+
+        return account;
     }
 }

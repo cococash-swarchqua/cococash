@@ -40,6 +40,21 @@ variable "wallet_alb_sg_id" {
   description = "Wallet ALB security group ID"
 }
 
+variable "cognito_user_pool_arn" {
+  type        = string
+  description = "Cognito User Pool ARN for JWT authorizer"
+}
+
+variable "cognito_user_pool_client_id" {
+  type        = string
+  description = "Cognito User Pool Client ID for JWT audience"
+}
+
+variable "cognito_user_pool_endpoint" {
+  type        = string
+  description = "Cognito User Pool endpoint (issuer)"
+}
+
 # -----------------------------------------------
 # Security Group for VPC Link
 # -----------------------------------------------
@@ -125,7 +140,22 @@ resource "aws_apigatewayv2_integration" "wallet_alb" {
 }
 
 # -----------------------------------------------
-# Routes - Transfers
+# Cognito JWT Authorizer
+# -----------------------------------------------
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.cococash.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "${local.project_name}-cognito-authorizer"
+
+  jwt_configuration {
+    audience = [var.cognito_user_pool_client_id]
+    issuer   = "https://${var.cognito_user_pool_endpoint}"
+  }
+}
+
+# -----------------------------------------------
+# Routes - Transfers (protected)
 # -----------------------------------------------
 
 # POST /v1/transfers
@@ -133,6 +163,9 @@ resource "aws_apigatewayv2_route" "post_transfers" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "POST /v1/transfers"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/transfers/{transferId}
@@ -140,6 +173,9 @@ resource "aws_apigatewayv2_route" "get_transfer_by_id" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/transfers/{transferId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/transfers/account/{accountId}
@@ -147,6 +183,9 @@ resource "aws_apigatewayv2_route" "get_transfers_by_account" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/transfers/account/{accountId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # -----------------------------------------------
@@ -158,6 +197,19 @@ resource "aws_apigatewayv2_route" "post_accounts" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "POST /v1/accounts"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+# GET /v1/accounts/me
+resource "aws_apigatewayv2_route" "get_my_account" {
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "GET /v1/accounts/me"
+  target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/accounts/{accountId}/balance
@@ -165,6 +217,9 @@ resource "aws_apigatewayv2_route" "get_account_balance" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/accounts/{accountId}/balance"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # GET /v1/accounts/user/{userId}
@@ -172,6 +227,9 @@ resource "aws_apigatewayv2_route" "get_account_by_user" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/accounts/user/{userId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 # -----------------------------------------------

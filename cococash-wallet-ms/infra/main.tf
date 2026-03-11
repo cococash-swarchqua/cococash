@@ -459,23 +459,15 @@ resource "aws_security_group" "wallet_ecs" {
 # -----------------------------------------------
 resource "aws_security_group" "wallet_alb" {
   name        = "${local.service_name}-alb-sg"
-  description = "Security group for wallet ALB"
+  description = "Security group for wallet ALB (internal)"
   vpc_id      = var.vpc_id
 
   ingress {
-    description = "HTTP from anywhere"
+    description = "HTTP from VPC (API Gateway VPC Link)"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTPS from anywhere"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["10.0.0.0/16"]
   }
 
   egress {
@@ -493,10 +485,10 @@ resource "aws_security_group" "wallet_alb" {
 
 resource "aws_lb" "wallet" {
   name               = "${local.service_name}-alb"
-  internal           = false
+  internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.wallet_alb.id]
-  subnets            = [var.public_subnet_id_1, var.public_subnet_id_2]
+  subnets            = [var.private_app_subnet_id_1, var.private_app_subnet_id_2]
 
   tags = {
     Project   = "cococash"

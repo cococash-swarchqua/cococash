@@ -5,10 +5,12 @@ import { useWallet } from '../context/WalletContext';
 
 const Layout = ({ children }) => {
   const { user, logout } = useAuth();
-  const { balance } = useWallet();
+  const { balance, walletLoading } = useWallet();
   const location = useLocation();
 
   const isActive = (path) => location.pathname === path;
+
+  const displayBalance = walletLoading ? '...' : `$${balance.toFixed(2)}`;
 
   return (
     <div className="min-h-screen bg-coco-offwhite flex">
@@ -36,7 +38,7 @@ const Layout = ({ children }) => {
         <div className="p-4 border-t border-gray-800">
           <div className="mb-4">
             <p className="text-sm text-gray-400">Saldo Actual</p>
-            <p className="text-xl font-bold text-coco-green">${balance.toFixed(2)}</p>
+            <p className="text-xl font-bold text-coco-green">{displayBalance}</p>
           </div>
           <button 
             onClick={logout}

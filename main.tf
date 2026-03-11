@@ -6,6 +6,15 @@ module "cococash_infra" {
   }
 }
 
+# Auth Service (Cognito User Pool)
+module "cococash_auth" {
+  source = "./cococash-auth-ms"
+
+  providers = {
+    aws = aws
+  }
+}
+
 # Wallet Service Infrastructure (ECS Fargate, SNS, SQS, RDS)
 module "cococash_wallet_infra" {
   source = "./cococash-wallet-ms/infra"
@@ -51,6 +60,31 @@ module "cococash_api_gateway" {
   wallet_alb_listener_arn = module.cococash_wallet_infra.wallet_alb_listener_arn
   wallet_alb_dns          = module.cococash_wallet_infra.wallet_alb_dns
   wallet_alb_sg_id        = module.cococash_wallet_infra.wallet_alb_sg_id
+
+  # Cognito integration
+  cognito_user_pool_arn       = module.cococash_auth.user_pool_arn
+  cognito_user_pool_client_id = module.cococash_auth.user_pool_client_id
+  cognito_user_pool_endpoint  = module.cococash_auth.user_pool_endpoint
+
+  providers = {
+    aws = aws
+  }
+}
+
+# Frontend Infrastructure (ECS Fargate + ALB)
+module "cococash_wfe" {
+  source = "./cococash-wfe/infra"
+
+  vpc_id              = module.cococash_infra.vpc_id
+  public_subnet_id_1  = module.cococash_infra.public_subnet_id_1
+  public_subnet_id_2  = module.cococash_infra.public_subnet_id_2
+  private_app_subnet_id_1 = module.cococash_infra.private_app_subnet_id_1
+  private_app_subnet_id_2 = module.cococash_infra.private_app_subnet_id_2
+  ecs_cluster_id      = module.cococash_wallet_infra.ecs_cluster_id
+  ecs_task_execution_role_arn = module.cococash_wallet_infra.ecs_task_execution_role_arn
+  api_gateway_url     = module.cococash_api_gateway.api_gateway_url
+  cognito_user_pool_id    = module.cococash_auth.user_pool_id
+  cognito_client_id       = module.cococash_auth.user_pool_client_id
 
   providers = {
     aws = aws

@@ -32,3 +32,18 @@ export interface AccountBalanceResponse {
   currency: string;
   lastUpdated: Date;
 }
+
+export interface DepositRequest {
+  amount: number;
+  description?: string;
+}
+
+export interface DepositResponse {
+  accountId: string;
+  accountNumber: string;
+  previousBalance: number;
+  depositAmount: number;
+  newBalance: number;
+  currency: string;
+  depositId: string;
+}

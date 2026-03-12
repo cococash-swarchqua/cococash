@@ -7,15 +7,31 @@ import Input from '../components/Input';
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Simulate login
-    if (email && password) {
-      login({ email, name: email.split('@')[0] });
+    if (!email || !password) return;
+
+    setError('');
+    setSubmitting(true);
+    try {
+      await login(email, password);
       navigate('/dashboard');
+    } catch (err) {
+      if (err.code === 'UserNotConfirmedException') {
+        // Redirect to confirm page
+        navigate('/register', { state: { pendingConfirmation: true, email } });
+      } else if (err.code === 'NotAuthorizedException') {
+        setError('Correo o contraseña incorrectos.');
+      } else {
+        setError(err.message || 'Error al iniciar sesión.');
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -27,6 +43,12 @@ const Login = () => {
           <h2 className="text-3xl font-bold text-coco-dark">Bienvenido de nuevo</h2>
           <p className="text-gray-500">Ingresa a tu cuenta CocoCash</p>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <Input 
@@ -48,8 +70,8 @@ const Login = () => {
             required
           />
           
-          <Button type="submit" variant="primary" className="w-full py-3">
-            Iniciar Sesión
+          <Button type="submit" variant="primary" className="w-full py-3" disabled={submitting}>
+            {submitting ? 'Ingresando...' : 'Iniciar Sesión'}
           </Button>
         </form>
 

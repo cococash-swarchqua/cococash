@@ -1,4 +1,13 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import {
+  signIn as cognitoSignIn,
+  signUp as cognitoSignUp,
+  confirmSignUp as cognitoConfirmSignUp,
+  resendConfirmationCode as cognitoResendCode,
+  signOut as cognitoSignOut,
+  getCurrentSession,
+  getUserAttributes,
+} from '../services/cognito';
 
 const AuthContext = createContext();
 
@@ -8,35 +17,76 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Check for an existing Cognito session on mount
   useEffect(() => {
-    // Simulate checking for a persisted session
-    const storedUser = localStorage.getItem('cococash_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    (async () => {
+      try {
+        const session = await getCurrentSession();
+        if (session && session.isValid()) {
+          const attrs = await getUserAttributes();
+          setUser({
+            email: attrs?.email,
+            name: attrs?.name || attrs?.email?.split('@')[0],
+            sub: session.getIdToken().payload.sub,
+          });
+        }
+      } catch {
+        // No active session
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const login = (userData) => {
-    // In a real app, you'd validate credentials here
-    const userObj = { ...userData, id: Date.now() };
+  /**
+   * Login with email + password via Cognito SRP.
+   * Returns the session on success.
+   */
+  const login = async (email, password) => {
+    const session = await cognitoSignIn(email, password);
+    const attrs = await getUserAttributes();
+    const userObj = {
+      email: attrs?.email || email,
+      name: attrs?.name || email.split('@')[0],
+      sub: session.getIdToken().payload.sub,
+    };
     setUser(userObj);
-    localStorage.setItem('cococash_user', JSON.stringify(userObj));
-    return true;
+    return session;
+  };
+
+  /**
+   * Register a new user via Cognito.
+   * After this step the user must confirm with the code sent to their email.
+   */
+  const register = async (email, password, name) => {
+    const result = await cognitoSignUp(email, password, name);
+    return result;
+  };
+
+  /**
+   * Confirm sign-up with the verification code.
+   */
+  const confirmSignUp = async (email, code) => {
+    const result = await cognitoConfirmSignUp(email, code);
+    return result;
+  };
+
+  /**
+   * Resend the confirmation code.
+   */
+  const resendCode = async (email) => {
+    return cognitoResendCode(email);
   };
 
   const logout = () => {
+    cognitoSignOut();
     setUser(null);
-    localStorage.removeItem('cococash_user');
-  };
-
-  const register = (userData) => {
-    // Simulation
-    return login(userData);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, register, loading }}>
+    <AuthContext.Provider
+      value={{ user, login, logout, register, confirmSignUp, resendCode, loading }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );

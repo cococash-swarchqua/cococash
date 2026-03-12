@@ -7,21 +7,44 @@ import Input from '../components/Input';
 const Transfer = () => {
   const [destination, setDestination] = useState('');
   const [amount, setAmount] = useState('');
-  const { addTransaction, balance } = useWallet();
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const { addTransaction, balance, account } = useWallet();
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (parseFloat(amount) > balance) {
-      alert("Fondos insuficientes");
+    setError('');
+
+    const numAmount = parseFloat(amount);
+    if (numAmount <= 0) {
+      setError('El monto debe ser mayor a cero.');
       return;
     }
-    
-    // Simulate API delay
-    const confirm = window.confirm(`¿Confirmas enviar $${amount} a ${destination}?`);
-    if (confirm) {
-      addTransaction(destination, amount);
+    if (numAmount > balance) {
+      setError('Fondos insuficientes.');
+      return;
+    }
+    if (!destination.trim()) {
+      setError('Ingresa un número de cuenta destino.');
+      return;
+    }
+    if (destination.trim() === account?.accountNumber) {
+      setError('No puedes transferir a tu propia cuenta.');
+      return;
+    }
+
+    const confirmMsg = `¿Confirmas enviar $${numAmount.toFixed(2)} a la cuenta ${destination}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setSubmitting(true);
+    try {
+      await addTransaction(destination.trim(), numAmount);
       navigate('/balance');
+    } catch (err) {
+      setError(err.message || 'Error al realizar la transferencia.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -31,15 +54,26 @@ const Transfer = () => {
       
       <div className="bg-white p-8 rounded-xl shadow-sm">
         <div className="mb-6 p-4 bg-coco-offwhite rounded-lg flex justify-between items-center">
-          <span className="text-gray-600">Saldo Disponible</span>
+          <div>
+            <span className="text-gray-600">Saldo Disponible</span>
+            {account?.accountNumber && (
+              <p className="text-xs text-gray-400 mt-1">Cuenta: {account.accountNumber}</p>
+            )}
+          </div>
           <span className="font-bold text-xl text-coco-green">${balance.toFixed(2)}</span>
         </div>
 
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <Input 
-            label="Cuenta Destino / Email" 
+            label="Número de Cuenta Destino" 
             id="destination" 
-            placeholder="1234-5678-9012"
+            placeholder="Número de cuenta del destinatario"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
             required
@@ -62,11 +96,11 @@ const Transfer = () => {
           </div>
 
           <div className="pt-4">
-            <Button type="submit" variant="primary" className="w-full py-3 text-lg">
-              Enviar Dinero
+            <Button type="submit" variant="primary" className="w-full py-3 text-lg" disabled={submitting}>
+              {submitting ? 'Procesando...' : 'Enviar Dinero'}
             </Button>
             <p className="text-xs text-center text-gray-400 mt-4">
-              Transacción protegida con cifrado de extremo a extremo.
+              Transacción protegida con autenticación Cognito y API Gateway.
             </p>
           </div>
         </form>

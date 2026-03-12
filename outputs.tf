@@ -36,3 +36,26 @@ output "dynamodb_table_name" {
   value       = module.cococash_transaction_infra.dynamodb_table_name
   description = "DynamoDB transactions table name"
 }
+
+# API Gateway
+output "api_gateway_url" {
+  value       = module.cococash_api_gateway.api_gateway_url
+  description = "API Gateway invoke URL"
+}
+
+# Cognito
+output "cognito_user_pool_id" {
+  value       = module.cococash_auth.user_pool_id
+  description = "Cognito User Pool ID"
+}
+
+output "cognito_user_pool_client_id" {
+  value       = module.cococash_auth.user_pool_client_id
+  description = "Cognito User Pool Client ID"
+}
+
+# Frontend
+output "wfe_alb_dns" {
+  value       = module.cococash_wfe.wfe_alb_dns
+  description = "Frontend ALB DNS name (public URL)"
+}

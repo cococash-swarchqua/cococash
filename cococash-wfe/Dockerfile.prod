@@ -21,7 +21,7 @@ ENV VITE_AWS_REGION=$VITE_AWS_REGION
 
 # Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm install 
 
 # Copy source and build
 COPY . .

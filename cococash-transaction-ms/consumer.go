@@ -172,6 +172,28 @@ func (c *EventConsumer) processMessage(ctx context.Context, msg sqsTypes.Message
 		if err := c.repo.PutTransaction(ctx, failedRecord); err != nil {
 			return err
 		}
+	} else if event.EventType == "deposit.completed" {
+		// Single record: the account that received the deposit (credit)
+		depositRecord := TransactionRecord{
+			UserID:               event.AccountID, // Beneficiary
+			Timestamp:            now,
+			TransactionID:        transactionID + "-deposit",
+			TransferID:           event.DepositID,
+			Type:                 "DEPOSIT_COMPLETED",
+			Amount:               event.Amount,
+			Currency:             "CCC",
+			SourceAccountID:      "EXTERNAL",
+			DestinationAccountID: event.AccountID,
+			Status:               "COMPLETED",
+			Description:          event.Description,
+			EventSource:          "cococash-wallet-ms",
+			EventType:            event.EventType,
+			RecordedAt:           now,
+		}
+
+		if err := c.repo.PutTransaction(ctx, depositRecord); err != nil {
+			return err
+		}
 	}
 
 	log.Printf("Successfully processed transfer %s (%s)", event.TransferID, event.EventType)

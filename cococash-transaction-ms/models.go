@@ -31,7 +31,13 @@ type TransferEvent struct {
 	DestinationAccountID string  `json:"destinationAccountId"`
 	Amount               float64 `json:"amount"`
 	Timestamp            string  `json:"timestamp"`
-	Reason               string  `json:"reason,omitempty"` // For failed events
+	Reason               string  `json:"reason,omitempty"` // For transfer.failed events
+	// Fields specific to deposit.completed events
+	DepositID   string  `json:"depositId,omitempty"`
+	AccountID   string  `json:"accountId,omitempty"`
+	UserID      string  `json:"userId,omitempty"`
+	NewBalance  float64 `json:"newBalance,omitempty"`
+	Description string  `json:"description,omitempty"`
 }
 
 // SNSMessage wraps the actual event when delivered via SNS -> SQS
@@ -51,16 +57,16 @@ type UserTransactionsResponse struct {
 
 // TransactionDetailResponse matches TRANS-02 API response
 type TransactionDetailResponse struct {
-	TransactionID        string  `json:"transactionId"`
-	TransferID           string  `json:"transferId"`
-	SourceAccountID      string  `json:"sourceAccountId"`
-	DestinationAccountID string  `json:"destinationAccountId"`
-	Amount               float64 `json:"amount"`
-	Currency             string  `json:"currency"`
-	Status               string  `json:"status"`
-	Description          string  `json:"description,omitempty"`
-	CreatedAt            string  `json:"createdAt"`
-	ProcessedAt          string  `json:"processedAt"`
+	TransactionID        string     `json:"transactionId"`
+	TransferID           string     `json:"transferId"`
+	SourceAccountID      string     `json:"sourceAccountId"`
+	DestinationAccountID string     `json:"destinationAccountId"`
+	Amount               float64    `json:"amount"`
+	Currency             string     `json:"currency"`
+	Status               string     `json:"status"`
+	Description          string     `json:"description,omitempty"`
+	CreatedAt            string     `json:"createdAt"`
+	ProcessedAt          string     `json:"processedAt"`
 	AuditTrail           AuditTrail `json:"auditTrail"`
 }
 
@@ -78,6 +84,8 @@ func mapEventType(eventType string) string {
 		return "TRANSFER_COMPLETED"
 	case "transfer.failed":
 		return "TRANSFER_FAILED"
+	case "deposit.completed":
+		return "DEPOSIT_COMPLETED"
 	default:
 		return "UNKNOWN"
 	}

@@ -85,6 +85,18 @@ export class AccountRepository {
     }
 
     /**
+     * Get account with row-level lock for concurrent deposits
+     * RF-10: Handle concurrent operations consistently
+     */
+    async findByUserIdForUpdate(client: PoolClient, userId: string): Promise<Account | null> {
+        const query = 'SELECT * FROM accounts WHERE user_id = $1 FOR UPDATE';
+        const result = await client.query(query, [userId]);
+
+        if (result.rows.length === 0) return null;
+        return this.mapToAccount(result.rows[0]);
+    }
+
+    /**
      * Get account with row-level lock for concurrent transfers
      * RF-10: Handle concurrent operations consistently
      */

@@ -3,7 +3,27 @@ import { Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 
 const Dashboard = () => {
-  const { balance } = useWallet();
+  const { balance, account, walletLoading, error } = useWallet();
+
+  if (walletLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-coco-green mx-auto mb-4"></div>
+          <p className="text-gray-500">Cargando tu billetera...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
+        <p className="font-semibold">Error al cargar tu billetera</p>
+        <p className="text-sm mt-1">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -13,7 +33,11 @@ const Dashboard = () => {
           <p className="text-coco-green font-medium mb-1">Saldo Disponible</p>
           <h2 className="text-4xl md:text-5xl font-bold">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h2>
           <div className="mt-8 flex gap-4">
-             <div className="text-sm bg-white/10 px-3 py-1 rounded-full">**** 4582</div>
+             {account?.accountNumber && (
+               <div className="text-sm bg-white/10 px-3 py-1 rounded-full">
+                 Cuenta: {account.accountNumber}
+               </div>
+             )}
              <div className="text-sm bg-coco-green/20 text-coco-green px-3 py-1 rounded-full">Activa</div>
           </div>
         </div>
@@ -31,7 +55,7 @@ const Dashboard = () => {
                 💸
               </div>
               <h3 className="text-xl font-bold text-gray-800 mb-2">Realizar Transferencia</h3>
-              <p className="text-gray-500">Envía dinero a otros usuarios de CocoCash o bancos externos de forma segura.</p>
+              <p className="text-gray-500">Envía dinero a otros usuarios de CocoCash de forma segura.</p>
             </div>
             <div className="mt-4 text-coco-green font-medium flex items-center gap-2">
               Ir a Transferencias <span>→</span>
@@ -46,7 +70,7 @@ const Dashboard = () => {
                 📊
               </div>
               <h3 className="text-xl font-bold text-gray-800 mb-2">Ver Movimientos</h3>
-              <p className="text-gray-500">Consulta tu historial, descarga extractos y revisa tus gastos mensuales.</p>
+              <p className="text-gray-500">Consulta tu historial de transferencias y revisa tus movimientos.</p>
             </div>
             <div className="mt-4 text-coco-brown font-medium flex items-center gap-2">
               Ver Historial <span>→</span>

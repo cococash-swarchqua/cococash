@@ -49,6 +49,13 @@ export class AccountController {
          * Ownership check: callers can only query their own userId.
          */
         this.router.get('/user/:userId', this.getAccountByUserId.bind(this));
+
+        /**
+         * POST /accounts/me/deposit
+         * RF-05: Add funds to the authenticated user's wallet.
+         * userId comes from the JWT — the caller can only deposit to their own account.
+         */
+        this.router.post('/me/deposit', this.depositToMyAccount.bind(this));
     }
 
     /**
@@ -141,6 +148,34 @@ export class AccountController {
             res.status(200).json({
                 success: true,
                 data: account
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * POST /accounts/me/deposit — add funds to the caller's wallet.
+     * amount must be a positive number; userId comes from the JWT.
+     */
+    private async depositToMyAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const userId = (req as AuthenticatedRequest).cognitoUserId;
+            const { amount, description } = req.body;
+
+            const parsedAmount = parseFloat(amount);
+            if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+                res.status(400).json({
+                    error: 'amount must be a positive number'
+                });
+                return;
+            }
+
+            const result = await this.accountService.deposit(userId, parsedAmount, description);
+
+            res.status(200).json({
+                success: true,
+                data: result
             });
         } catch (error) {
             next(error);

@@ -19,6 +19,17 @@ interface AccountCreatedEvent {
     timestamp: Date;
 }
 
+interface DepositCompletedEvent {
+    eventType: 'deposit.completed';
+    depositId: string;
+    accountId: string;
+    userId: string;
+    amount: number;
+    newBalance: number;
+    description?: string;
+    timestamp: Date;
+}
+
 export class TransferPublisher {
     private snsClient: SNSClient;
     private transferTopicArn: string;
@@ -56,6 +67,15 @@ export class TransferPublisher {
     async publishTransferFailed(event: TransferFailedEvent): Promise<void> {
         await this.publishToSNS(this.transferTopicArn, event);
         console.log(`Published transfer.failed event for transfer ${event.transferId}`);
+    }
+
+    /**
+     * Publish deposit.completed event
+     * RF-14: Domain events for business actions
+     */
+    async publishDepositCompleted(event: DepositCompletedEvent): Promise<void> {
+        await this.publishToSNS(this.transferTopicArn, event);
+        console.log(`Published deposit.completed event for account ${event.accountId} — amount: ${event.amount}`);
     }
 
     /**

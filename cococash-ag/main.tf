@@ -212,6 +212,16 @@ resource "aws_apigatewayv2_route" "get_my_account" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+# POST /v1/accounts/me/deposit
+resource "aws_apigatewayv2_route" "post_deposit" {
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "POST /v1/accounts/me/deposit"
+  target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
 # GET /v1/accounts/{accountId}/balance
 resource "aws_apigatewayv2_route" "get_account_balance" {
   api_id    = aws_apigatewayv2_api.cococash.id

@@ -238,7 +238,7 @@ resource "aws_sns_topic_subscription" "transfer_completed_to_transaction" {
   endpoint  = aws_sqs_queue.transaction_audit_queue.arn
 
   filter_policy = jsonencode({
-    eventType = ["transfer.completed", "transfer.failed"]
+    eventType = ["transfer.completed", "transfer.failed", "deposit.completed"]
   })
 }
 

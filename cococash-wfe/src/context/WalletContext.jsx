@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { getMyAccount, createAccount, getTransferHistory, initiateTransfer } from '../services/api';
+import { getMyAccount, createAccount, getTransferHistory, initiateTransfer, depositFunds } from '../services/api';
 
 const WalletContext = createContext();
 
@@ -70,6 +70,16 @@ export const WalletProvider = ({ children }) => {
   }, [user, loadWallet]);
 
   /**
+   * Deposit funds into the current user's wallet.
+   */
+  const deposit = async (amount, description = '') => {
+    const result = await depositFunds(amount, description);
+    // Refresh balance after deposit
+    setTimeout(() => loadWallet(), 1500);
+    return result.data;
+  };
+
+  /**
    * Send a transfer and refresh wallet data.
    */
   const addTransaction = async (destinationAccountNumber, amount) => {
@@ -91,6 +101,7 @@ export const WalletProvider = ({ children }) => {
         balance,
         transactions,
         addTransaction,
+        deposit,
         walletLoading,
         error,
         refreshWallet: loadWallet,

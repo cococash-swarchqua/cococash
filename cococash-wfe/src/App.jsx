@@ -8,13 +8,14 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Transfer from './pages/Transfer';
 import Balance from './pages/Balance';
+import Deposit from './pages/Deposit';
 import Layout from './components/Layout';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-coco-offwhite text-coco-green">Cargando...</div>;
-  
+
   return user ? children : <Navigate to="/login" />;
 };
 
@@ -27,7 +28,7 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            
+
             <Route path="/dashboard" element={
               <PrivateRoute>
                 <Layout>
@@ -35,7 +36,7 @@ function App() {
                 </Layout>
               </PrivateRoute>
             } />
-            
+
             <Route path="/transfer" element={
               <PrivateRoute>
                 <Layout>
@@ -43,11 +44,19 @@ function App() {
                 </Layout>
               </PrivateRoute>
             } />
-            
+
             <Route path="/balance" element={
               <PrivateRoute>
                 <Layout>
                   <Balance />
+                </Layout>
+              </PrivateRoute>
+            } />
+
+            <Route path="/deposit" element={
+              <PrivateRoute>
+                <Layout>
+                  <Deposit />
                 </Layout>
               </PrivateRoute>
             } />

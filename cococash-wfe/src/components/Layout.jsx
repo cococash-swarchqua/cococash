@@ -27,6 +27,9 @@ const Layout = ({ children }) => {
           <Link to="/dashboard" className={`block px-4 py-3 rounded-lg transition-colors ${isActive('/dashboard') ? 'bg-coco-green text-white' : 'hover:bg-gray-800 text-gray-300'}`}>
             Dashboard
           </Link>
+          <Link to="/deposit" className={`block px-4 py-3 rounded-lg transition-colors ${isActive('/deposit') ? 'bg-coco-green text-white' : 'hover:bg-gray-800 text-gray-300'}`}>
+            Depositar
+          </Link>
           <Link to="/transfer" className={`block px-4 py-3 rounded-lg transition-colors ${isActive('/transfer') ? 'bg-coco-green text-white' : 'hover:bg-gray-800 text-gray-300'}`}>
             Transferir
           </Link>
@@ -40,7 +43,7 @@ const Layout = ({ children }) => {
             <p className="text-sm text-gray-400">Saldo Actual</p>
             <p className="text-xl font-bold text-coco-green">{displayBalance}</p>
           </div>
-          <button 
+          <button
             onClick={logout}
             className="w-full text-left px-4 py-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
           >

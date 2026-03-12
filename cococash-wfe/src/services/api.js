@@ -77,3 +77,16 @@ export function getTransferStatus(transferId) {
 export function getTransferHistory(accountId) {
   return request(`/v1/transfers/account/${accountId}`);
 }
+
+// -----------------------------------------------
+// Deposits
+// -----------------------------------------------
+
+/** POST /v1/accounts/me/deposit — add funds to the authenticated user's wallet */
+export function depositFunds(amount, description = '') {
+  return request('/v1/accounts/me/deposit', {
+    method: 'POST',
+    body: JSON.stringify({ amount, description }),
+  });
+}
+

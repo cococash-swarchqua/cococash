@@ -83,10 +83,9 @@ func init() {
 }
 
 func handler(ctx context.Context, event EventBridgeEvent) error {
-	// Determine the report period: previous month
+	// Determine the report period: current month (modified for testing)
 	now := time.Now().UTC()
-	previousMonth := now.AddDate(0, -1, 0)
-	period := previousMonth.Format("2006-01")
+	period := now.Format("2006-01")
 
 	log.Printf("Starting report generation for period: %s", period)
 

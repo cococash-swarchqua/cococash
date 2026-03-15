@@ -13,17 +13,12 @@ const Certificates = () => {
   const availableMonths = useMemo(() => {
     const months = [];
     const now = new Date();
-    // Last available month is the previous month
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    // For testing: allow downloading the current month
+    const lastMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Default start: 6 months ago (if no account createdAt, use this)
-    let startDate;
-    if (account?.createdAt) {
-      startDate = new Date(account.createdAt);
-      startDate.setDate(1); // Normalize to first of month
-    } else {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-    }
+    // For testing/demonstration purposes: always allow seeing the last 6 months
+    // regardless of when the account was created, so we can test the download flow.
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
 
     // Don't go before account creation
     const current = new Date(lastMonth);

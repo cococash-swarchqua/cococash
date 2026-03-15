@@ -31,11 +31,13 @@ export class TransferService {
     }
 
     /**
-     * Initiate a transfer request (synchronous validation, async processing)
+     * Execute a transfer synchronously (validation + processing in one step)
      * RF-07: Initiate transfer
      * RF-08: Validate request
+     * RF-10: Concurrency & consistency (row-level locking)
+     * RF-11: Update balances upon completion
      */
-    async initiateTransfer(request: TransferRequest): Promise<TransferResponse> {
+    async executeTransfer(request: TransferRequest): Promise<TransferResponse> {
         // Basic validation
         if (request.amount <= 0) {
             throw new Error('Transfer amount must be positive');
@@ -56,17 +58,19 @@ export class TransferService {
             throw new Error(`Destination account ${request.destinationAccountNumber} not found`);
         }
 
-        // Check balance (preliminary - will be re-checked with lock during processing)
+        // Preliminary balance check (will be re-checked with lock)
         if (sourceAccount.balance < request.amount) {
             throw new Error('Insufficient balance');
         }
 
-        // Create transfer record with PENDING status
         const client = await this.pool.connect();
+        let transfer: Transfer;
+
         try {
             await client.query('BEGIN');
 
-            const transfer = await this.transferRepository.create(
+            // Create transfer record
+            transfer = await this.transferRepository.create(
                 client,
                 sourceAccount.id,
                 destAccount.id,
@@ -74,119 +78,105 @@ export class TransferService {
                 request.description
             );
 
+            // Lock source and destination accounts (ordered to prevent deadlocks)
+            // RF-10: Row-level locking for consistency
+            const [firstId, secondId] = [sourceAccount.id, destAccount.id].sort();
+
+            const firstLocked = await this.accountRepository.findByIdForUpdate(client, firstId);
+            const secondLocked = await this.accountRepository.findByIdForUpdate(client, secondId);
+
+            const sourceLocked = firstId === sourceAccount.id ? firstLocked : secondLocked;
+            const destLocked = firstId === destAccount.id ? firstLocked : secondLocked;
+
+            if (!sourceLocked || !destLocked) {
+                await this.transferRepository.updateStatus(client, transfer.id, TransferStatus.FAILED, 'Account not found');
+                await client.query('COMMIT');
+
+                await this.eventPublisher.publishTransferFailed({
+                    eventType: 'transfer.failed',
+                    transferId: transfer.id,
+                    sourceAccountId: sourceAccount.id,
+                    destinationAccountId: destAccount.id,
+                    sourceUserId: sourceAccount.userId,
+                    destinationUserId: destAccount.userId,
+                    reason: 'Account not found',
+                    amount: request.amount,
+                    timestamp: new Date()
+                });
+
+                return {
+                    transferId: transfer.id,
+                    transferCode: transfer.transferCode,
+                    status: TransferStatus.FAILED,
+                    message: 'Transfer failed: account not found'
+                };
+            }
+
+            // RF-08: Validate balance (with lock held)
+            if (sourceLocked.balance < request.amount) {
+                await this.transferRepository.updateStatus(client, transfer.id, TransferStatus.FAILED, 'Insufficient balance');
+                await client.query('COMMIT');
+
+                await this.eventPublisher.publishTransferFailed({
+                    eventType: 'transfer.failed',
+                    transferId: transfer.id,
+                    sourceAccountId: sourceAccount.id,
+                    destinationAccountId: destAccount.id,
+                    sourceUserId: sourceAccount.userId,
+                    destinationUserId: destAccount.userId,
+                    reason: 'Insufficient balance',
+                    amount: request.amount,
+                    timestamp: new Date()
+                });
+
+                return {
+                    transferId: transfer.id,
+                    transferCode: transfer.transferCode,
+                    status: TransferStatus.FAILED,
+                    message: 'Transfer failed: insufficient balance'
+                };
+            }
+
+            // RF-11: Update balances
+            const newSourceBalance = sourceLocked.balance - request.amount;
+            const newDestBalance = destLocked.balance + request.amount;
+
+            await this.accountRepository.updateBalance(client, sourceAccount.id, newSourceBalance);
+            await this.accountRepository.updateBalance(client, destAccount.id, newDestBalance);
+
+            // Mark transfer as completed
+            await this.transferRepository.updateStatus(client, transfer.id, TransferStatus.COMPLETED);
+
             await client.query('COMMIT');
 
-            // Publish transfer.initiated event for async processing
-            // RF-09: Event-driven mechanism
-            await this.eventPublisher.publishTransferInitiated({
-                eventType: 'transfer.initiated',
+            // Publish transfer.completed event (for transaction-ms)
+            await this.eventPublisher.publishTransferCompleted({
+                eventType: 'transfer.completed',
                 transferId: transfer.id,
-                sourceAccountId: transfer.sourceAccountId,
-                destinationAccountId: transfer.destinationAccountId,
-                amount: transfer.amount,
+                sourceAccountId: sourceAccount.id,
+                destinationAccountId: destAccount.id,
+                sourceUserId: sourceAccount.userId,
+                destinationUserId: destAccount.userId,
+                amount: request.amount,
                 timestamp: new Date()
             });
 
             return {
                 transferId: transfer.id,
                 transferCode: transfer.transferCode,
-                status: TransferStatus.PENDING,
-                message: 'Transfer initiated successfully. Processing asynchronously.'
+                status: TransferStatus.COMPLETED,
+                message: 'Transfer completed successfully'
             };
 
         } catch (error) {
             await client.query('ROLLBACK');
-            throw error;
-        } finally {
-            client.release();
-        }
-    }
 
-    /**
-     * Process transfer with row-level locking
-     * RF-10: Handle concurrent operations consistently
-     * RF-11: Update balances upon completion
-     * 
-     * Called by SQS consumer
-     */
-    async processTransfer(transferId: string): Promise<void> {
-        const client = await this.pool.connect();
-
-        try {
-            await client.query('BEGIN');
-
-            // Get transfer record
-            const transfer = await this.transferRepository.findById(transferId);
-            if (!transfer) {
-                throw new Error(`Transfer ${transferId} not found`);
-            }
-
-            if (transfer.status !== TransferStatus.PENDING) {
-                // Already processed (idempotency)
-                return;
-            }
-
-            // Lock source and destination accounts (ordered to prevent deadlocks)
-            // RF-10: Row-level locking for consistency
-            const [firstId, secondId] = [transfer.sourceAccountId, transfer.destinationAccountId].sort();
-
-            const firstAccount = await this.accountRepository.findByIdForUpdate(client, firstId);
-            const secondAccount = await this.accountRepository.findByIdForUpdate(client, secondId);
-
-            const sourceAccount = firstId === transfer.sourceAccountId ? firstAccount : secondAccount;
-            const destAccount = firstId === transfer.destinationAccountId ? firstAccount : secondAccount;
-
-            if (!sourceAccount || !destAccount) {
-                await this.transferRepository.updateStatus(client, transferId, TransferStatus.FAILED, 'Account not found');
-                await client.query('COMMIT');
-                return;
-            }
-
-            // RF-08: Validate balance (with lock held)
-            if (sourceAccount.balance < transfer.amount) {
-                await this.transferRepository.updateStatus(client, transferId, TransferStatus.FAILED, 'Insufficient balance');
-                await client.query('COMMIT');
-
-                await this.eventPublisher.publishTransferFailed({
-                    eventType: 'transfer.failed',
-                    transferId,
-                    reason: 'Insufficient balance',
-                    timestamp: new Date()
-                });
-                return;
-            }
-
-            // RF-11: Update balances
-            const newSourceBalance = sourceAccount.balance - transfer.amount;
-            const newDestBalance = destAccount.balance + transfer.amount;
-
-            await this.accountRepository.updateBalance(client, sourceAccount.id, newSourceBalance);
-            await this.accountRepository.updateBalance(client, destAccount.id, newDestBalance);
-
-            // Mark transfer as completed
-            await this.transferRepository.updateStatus(client, transferId, TransferStatus.COMPLETED);
-
-            await client.query('COMMIT');
-
-            // Publish transfer.completed event
-            await this.eventPublisher.publishTransferCompleted({
-                eventType: 'transfer.completed',
-                transferId,
-                sourceAccountId: transfer.sourceAccountId,
-                destinationAccountId: transfer.destinationAccountId,
-                amount: transfer.amount,
-                timestamp: new Date()
-            });
-
-        } catch (error) {
-            await client.query('ROLLBACK');
-
-            // Update status to FAILED
+            // Try to mark as FAILED
             const retryClient = await this.pool.connect();
             try {
                 await this.transferRepository.updateStatus(
                     retryClient,
-                    transferId,
+                    transfer!.id,
                     TransferStatus.FAILED,
                     error instanceof Error ? error.message : 'Unknown error'
                 );

@@ -21,10 +21,10 @@ export class TransferController {
 
         /**
          * POST /transfers
-         * RF-07: Initiate transfer (sync validation, async processing).
+         * RF-07: Execute transfer synchronously.
          * Ownership check: sourceAccountNumber must belong to the caller.
          */
-        this.router.post('/', this.initiateTransfer.bind(this));
+        this.router.post('/', this.executeTransfer.bind(this));
 
         /**
          * GET /transfers/:transferId
@@ -41,12 +41,12 @@ export class TransferController {
     }
 
     /**
-     * POST /transfers — initiate a transfer.
+     * POST /transfers — execute a transfer synchronously.
      * Ownership check: verifies the source account belongs to the authenticated user
      * so a user cannot initiate transfers from another person's account
      * even if they know the account number.
      */
-    private async initiateTransfer(req: Request, res: Response, next: NextFunction): Promise<void> {
+    private async executeTransfer(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { sourceAccountNumber, destinationAccountNumber, amount, description } = req.body;
             const userId = (req as AuthenticatedRequest).cognitoUserId;
@@ -67,14 +67,14 @@ export class TransferController {
                 return;
             }
 
-            const result = await this.transferService.initiateTransfer({
+            const result = await this.transferService.executeTransfer({
                 sourceAccountNumber,
                 destinationAccountNumber,
                 amount: parseFloat(amount),
                 description
             });
 
-            res.status(202).json({
+            res.status(200).json({
                 success: true,
                 data: result
             });

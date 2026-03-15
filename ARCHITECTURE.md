@@ -171,16 +171,13 @@ graph TD
     AG(cococash-ag):::gateway
     
     %% Conexión WFE -> AG
-    %% WFE requiere interfaz HTTP que AG provee
     WFE -- "Requiere (Socket)" --> HTTP_AG(( )) 
     HTTP_AG -- "Provee (Ball)" --> AG
 
     %% --- 3. GESTIÓN DE IDENTIDAD (SaaS) ---
     COGNITO(AWS Cognito <br> User Pool):::auth
     
-    %% Autenticación: WFE usa SDK de Cognito
     WFE -- "Login/SDK" --> COGNITO
-    %% Autorización: AG valida tokens contra Cognito
     AG -- "Valida Token" --> COGNITO
 
     %% --- 4. CAPA MICROSERVICIOS ---
@@ -191,7 +188,6 @@ graph TD
     end
 
     %% Routing del AG hacia los MS
-    %% AG actúa como cliente (socket) consumiendo las APIs de los MS
     AG -- "Requiere Wallet API" --> API_WALLET(( )) --> WALLET_MS
     AG -- "Requiere Trans. API" --> API_TRANS(( )) --> TRANS_MS
 
@@ -202,14 +198,32 @@ graph TD
     WALLET_MS -- "SQL Client" --> WALLET_DB
     TRANS_MS -- "SQL Client" --> TRANS_DB
 
-    %% --- 6. CAPA DE EVENTOS (ASYNC) ---
+    %% --- 6. CAPA DE EVENTOS PRINCIPAL (ASYNC) ---
     EVENT_BUS[cococash-event-bus]:::bus
 
-    %% Publicación
     WALLET_MS -- "Publica: TransferCreated" --> BUS_IF(( )) --> EVENT_BUS
-
-    %% Consumo
     EVENT_BUS -- "Notifica Log Audit" --> LISTENER_IF(( )) --> TRANS_MS
+    
+    %% --- 7. SUBSISTEMA DE REPORTES (BATCH) ---
+    subgraph "Reporting Pipeline"
+        direction TB
+        TRIGGER(cococash-trigger <br> EventBridge)
+        GET_ACC(cococash-get-accounts <br> Lambda)
+        PDF_MAKER(cococash-pdf-maker <br> Lambda)
+        LINK_GEN(cococash-link-generator <br> Lambda)
+        S3_ODB[(cococash-pdf-odb <br> S3)]:::db
+        REPORT_BUS[cococash-event-bus-2]:::bus
+    end
+    
+    TRIGGER -- "Cron Mensual" --> GET_ACC
+    GET_ACC -- "Consume API" --> HTTP_AG
+    GET_ACC -- "Publica Usuarios" --> REPORT_BUS
+    REPORT_BUS -- "Notifica Lote" --> TRANS_MS
+    TRANS_MS -- "Publica Transacciones" --> REPORT_BUS
+    REPORT_BUS -- "Consolida TXNs" --> PDF_MAKER
+    PDF_MAKER -- "Sube PDF" --> S3_ODB
+    AG -- "Requiere URL" --> LINK_GEN
+    LINK_GEN -- "Firma S3 URL" --> S3_ODB
 ```
 
 ## 6. Análisis de Cobertura de Requerimientos (RF)
@@ -297,13 +311,18 @@ Todos los microservicios siguen la arquitectura **Shared-Nothing** (sin comparti
 
 | Componente | Responsabilidad | Tecnología Sugerida |
 | :--- | :--- | :--- |
+| **`cococash-event-bus`** | **Core Asíncrono**: Desacopla Wallet de Transaction (`transfer.completed`). | **Servicios**: Amazon SNS + Amazon SQS (con DLQ). |
+| **`cococash-event-bus-2`** | **Reporting Pipeline**: Gestiona el flujo batch mensual compuesto por dos tópicos SNS separados: uno para encolar lotes de usuarios y otro para enviar el historial de transacciones a la generación de PDF. | **Servicios**: Amazon SNS + Amazon SQS. |
 
+### F. Subsistema de Batch y Reportes (Serverless)
 
-
-
-
-
-## 8. Vista de Despliegue Objetivo (AWS Well-Architected)
+| Componente | Responsabilidad | Tecnología Sugerida |
+| :--- | :--- | :--- |
+| **`cococash-trigger`** | **Scheduler**: Activa el flujo de reportes el día 1 de cada mes. | **Servicio**: Amazon EventBridge. |
+| **`cococash-get-accounts`** | **Orquestador Batch**: Obtiene lista de usuarios del API Gateway y publica lotes a `event-bus-2`. | **Runtime**: Go (AWS Lambda). |
+| **`cococash-pdf-maker`** | **Renderizado Documental**: Consume historial del `event-bus-2`, genera PDF y sube a S3. | **Runtime**: Go (AWS Lambda). |
+| **`cococash-link-generator`** | **Proxy de Seguridad S3**: Genera URLs S3 prefirmadas temporales para descargas de usuario. Invocado síncronamente vía API Gateway. | **Runtime**: Go (AWS Lambda). |
+| **`cococash-pdf-odb`** | **Almacenamiento Objeto**: Retención inmutable de los extractos generados. | **Servicio**: Amazon S3 (Privado). |## 8. Vista de Despliegue Objetivo (AWS Well-Architected)
 
 Esta arquitectura sigue las mejores prácticas de **AWS Well-Architected Framework**, utilizando una mezcla óptima de **Servicios Gestionados (Serverless)** y **Contenedores/EC2** en una topología Multi-AZ.
 
@@ -389,7 +408,24 @@ graph TD
     APIGW -- "Validate Token" --> COGNITO
     APIGW -- "REST" --> WALLET_1 & WALLET_2
     
-    %% Event Driven Flow (Decoupling)
+    %% Reporting Pipeline (Serverless)
+    APIGW -- "REST /reports" --> LINK_GEN(Lambda: Link Generator):::compute
+    EVENT(EventBridge: Cron 1st Month):::aws --> GET_ACC(Lambda: Get Accounts):::compute
+    GET_ACC -.->|Límites HTTP| APIGW
+    GET_ACC -.->|Publica Lote Usuarios| SNS_REP1{{SNS: Report Users}}:::aws
+    SNS_REP1 -.-> SQS_REP1(SQS: Users)
+    SQS_REP1 -.->|Consume| TRANS_1 & TRANS_2
+    TRANS_1 & TRANS_2 -.->|Publica TXNs| SNS_REP2{{SNS: Report TXNs}}:::aws
+    SNS_REP2 -.-> SQS_REP2(SQS: TXNs)
+    SQS_REP2 -.->|Genera PDF| PDF_MAKER(Lambda: PDF Maker):::compute
+    
+    %% Storage S3
+    S3[(Amazon S3: ODB)]:::data
+    PDF_MAKER -- "Sube PDF (PutObject)" --> S3
+    LINK_GEN -- "Firma URL (GetObject)" --> S3
+    WFE_1 & WFE_2 -- "Descarga vía URL Firmada" --> S3
+    
+    %% Event Driven Flow (Decoupling Core)
     WALLET_1 & WALLET_2 -.->|Publish| SNS_1
     SNS_1 -.->|Fan-out| SQS_1
     SQS_1 -.->|Consume| TRANS_1 & TRANS_2
@@ -407,12 +443,13 @@ graph TD
 | Capa | Componente | Descripción y Justificación |
 | :--- | :--- | :--- |
 | **Ingress & Seguridad** | **ALB + Cognito + API GW** | **Punto de Entrada Unificado.** El `ALB` balancea la carga del Frontend. `Amazon Cognito` protege la identidad antes de llegar a la lógica. `API Gateway` gestiona las rutas y protege los microservicios internos. |
-| **Frontend (Compute)** | **AWS Fargate (Public)** | **Contenedores Serverless.** Ejecuta el servidor Next.js. Al estar en la *Public Subnet*, tiene visibilidad controlada hacia internet (vía ALB) pero sin exponer servidores físicos. |
-| **Backend (Compute)** | **Amazon EC2 (Private)** | **Instancias Dedicadas.** Aloja `cococash-wallet-ms`. Se usa EC2 aquí para tareas que requieren control total del SO, configuración de red específica o cumplimiento estricto (PCI-DSS nivel OS). |
-| **Workers (Async)** | **AWS Fargate (Private)** | **Procesamiento de Cola.** Aloja `cococash-trans-ms`. Escala automáticamente basado en la profundidad de la cola SQS ("Event-Driven Scaling"). Ideal para tareas de fondo desacopladas. |
-| **Mensajería** | **SNS + SQS** | **Core Asíncrono.** `SNS` recibe eventos del Wallet. `SQS` amortigua picos de carga, asegurando que el Worker de transacciones procese a su ritmo sin saturarse. |
-| **Persistencia (Wallet)** | **Amazon RDS** | **Aislamiento de Datos.** Ubicado en la subred más profunda (`Private Subnet 3`). Configurado en **Multi-AZ** para alta disponibilidad: si la zona `us-east-1a` cae, la base de datos conmuta automáticamente a `us-east-1b`. |
-| **Persistencia (Audit)** | **Amazon DynamoDB** | **Alta Escalabilidad de Escritura.** Perfecto para logs de auditoría inmutables. |
+| **Frontend (Compute)** | **AWS Fargate (Public)** | **Contenedores Serverless.** Ejecuta el servidor Next.js. Al estar en la *Public Subnet*, tiene visibilidad controlada hacia internet (vía ALB). |
+| **Backend (Compute)** | **Amazon EC2 (Private)** | **Instancias Dedicadas.** Aloja `cococash-wallet-ms`. |
+| **Workers (Async)** | **AWS Fargate (Private)** | **Procesamiento de Cola.** Aloja `cococash-trans-ms`. Escala automáticamente basado en la profundidad de la cola SQS. |
+| **Mensajería** | **SNS + SQS** | **Core Asíncrono.** `SNS` recibe eventos de Wallet y Reportes. Las DLQ (Dead Letter Queues) asumen los errores y reintentan el encolamiento sin pérdida. |
+| **Reporting (Serverless)**| **EventBridge + Lambdas** | Flujo 100% Serverless en Go. Reducción máxima del timeout con lotes de 100 peticiones desde `get-accounts`. `pdf-maker` genera los reportes, e interacciones Síncronas desde `cococash-wfe` hacia `link-generator` resuelven URLs temporales para interactuar directamente entre el navegador y AWS S3. |
+| **Persistencia (Wallet)** | **Amazon RDS** | **Aislamiento de Datos.** Multi-AZ para alta disponibilidad: si la zona `us-east-1a` cae, la base de datos conmuta automáticamente. |
+| **Data Lake / ODB** | **Amazon S3** | **Almacenamiento Estático Escalable** Archivos PDF protegidos tras políticas criptográficas, sin indexación pública o lectura descubierta. |
 
 ## 9. Análisis de Seguridad y Conectividad (Security Groups)
 
@@ -915,9 +952,71 @@ Esto se debe al patrón **CQRS (Command Query Responsibility Segregation)** y la
 
 ---
 
-### 10.4 Evento de Dominio (Bus Asíncrono)
+### 10.4 Servicio de Accesos y Documentos (`cococash-link-generator`)
 
-> Estos no son endpoints HTTP públicos. Son mensajes internos publicados por `cococash-wallet-ms` a SNS y consumidos por `cococash-transaction-ms` vía SQS.
+> Base Path: `/v1/reports`
+> Este servicio interactúa con S3 para generar URLs firmadas.
+
+---
+
+#### `REPORT-01` Listar Meses Disponibles
+
+| Campo | Valor |
+| :--- | :--- |
+| **Método** | `GET` |
+| **Ruta** | `/v1/reports/:accountId` |
+| **RF** | RF-17 |
+| **Auth** | 🔒 Bearer Token |
+
+**Response `200 OK`:**
+```json
+{
+  "success": true,
+  "data": {
+    "reports": [
+      {
+        "period": "2026-03",
+        "generatedAt": "2026-04-01T00:00:00.000Z",
+        "downloadUrl": "https://api.cococash.app/v1/reports/f47ac10b.../download?period=2026-03"
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### `REPORT-02` Descargar Archivo PDF
+
+| Campo | Valor |
+| :--- | :--- |
+| **Método** | `GET` |
+| **Ruta** | `/v1/reports/:accountId/download` |
+| **RF** | RF-17 |
+| **Auth** | 🔒 Bearer Token |
+
+**Query Parameters:**
+
+| Parámetro | Tipo | Requerido | Descripción |
+| :--- | :--- | :--- | :--- |
+| `period` | `String` | Sí | Formato YYYY-MM (e.g. `2026-03`). |
+
+**Response `200 OK`:**
+```json
+{
+  "success": true,
+  "data": {
+    "url": "https://cococash-pdf-odb.s3.amazonaws.com/reportes/f47ac10b.../2026/03/reporte.pdf?X-Amz-Signature=...",
+    "expiresIn": 900
+  }
+}
+```
+
+---
+
+### 10.5 Eventos de Dominio (Bus Asíncrono)
+
+> Estos no son endpoints HTTP públicos. Son mensajes internos publicados en SNS y consumidos vía SQS.
 
 #### `EVENT-01` TransferCreated
 
@@ -941,7 +1040,7 @@ Esto se debe al patrón **CQRS (Command Query Responsibility Segregation)** y la
 
 ---
 
-### 10.5 Endpoint Operacional
+### 10.6 Endpoint Operacional
 
 #### `OPS-01` Health Check
 
@@ -959,7 +1058,7 @@ Esto se debe al patrón **CQRS (Command Query Responsibility Segregation)** y la
 }
 ```
 
-### 10.6 Resumen de Especificaciones API (Tabla Rápida)
+### 10.7 Resumen de Especificaciones API (Tabla Rápida)
 
 | ID | Método | Ruta | Input (Body/Params) | Output (Success Data) | Status Codes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -968,12 +1067,14 @@ Esto se debe al patrón **CQRS (Command Query Responsibility Segregation)** y la
 | **`WALLET-01`** | `POST` | `/v1/accounts` | `{ userId, initialBalance }` | `{ id, balance, status, ... }` | 201, 400, 409 |
 | **`WALLET-02`** | `GET` | `/v1/accounts/:id/balance` | `accountId` (param) | `{ balance, currency, lastUpdated }` | 200, 404 |
 | **`WALLET-03`** | `GET` | `/v1/accounts/user/:userId` | `userId` (param) | `{ id, balance, status }` | 200, 404 |
-| **`WALLET-04`** | `POST` | `/v1/transfers` | `{ sourceAccountId, destinationAccountId, amount }` | `{ transferId, status: "PENDING" }` | 202, 400, 422 (NoFunds) |
+| **`WALLET-04`** | `POST` | `/v1/transfers` | `{ sourceAccountNumber, destinationAccountNumber, amount }` | `{ transferId, status: "COMPLETED" }` | 200, 400, 422 (NoFunds) |
 | **`WALLET-05`** | `GET` | `/v1/transfers/:id` | `transferId` (param) | `{ status, failureReason, processedAt }` | 200, 404 |
 | **`WALLET-06`** | `GET` | `/v1/transfers/account/:id` | `accountId` (param) | `[ { transferId, amount, status }, ... ]` | 200 |
 | **`TRANS-01`** | `GET` | `/v1/transactions/user/:uid` | `userId` (param), `?limit=20` | `{ transactions: [ { type, amount } ] }` | 200 |
 | **`TRANS-02`** | `GET` | `/v1/transactions/:id` | `transactionId` (param) | `{ auditTrail: { recordedAt, eventType } }` | 200, 404 |
-| **`OPS-01`** | `GET` | `/health` | - | `{ status: "healthy" }` | 200 |
+| **`REPORT-01`** | `GET` | `/v1/reports/:id` | `accountId` (param) | `[ { period, downloadUrl } ]` | 200, 404 |
+| **`REPORT-02`** | `GET` | `/v1/reports/:id/download` | `accountId` (param), `?period` | `{ url: "s3-presigned-url" }` | 200, 404 |
+| **`OPS-01`**  | `GET` | `/health` | - | `{ status: "healthy" }` | 200 |
 
 
 ## 11. Colección de Bruno (API Testing)

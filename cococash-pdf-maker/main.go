@@ -38,6 +38,15 @@ type TransactionRecord struct {
 	Description          string  `json:"description"`
 }
 
+var (
+	s3Client   *s3.Client
+	bucketName string
+)
+
+func main() {
+	lambda.Start(handler)
+}
+
 // ReportPayload is the message received from SNS→SQS (published by transaction-ms)
 type ReportPayload struct {
 	UserID        string              `json:"userId"`
@@ -53,11 +62,6 @@ type SNSMessage struct {
 	MessageID string `json:"MessageId"`
 	Message   string `json:"Message"`
 }
-
-var (
-	s3Client   *s3.Client
-	bucketName string
-)
 
 func init() {
 	bucketName = os.Getenv("S3_BUCKET_NAME")
@@ -102,7 +106,7 @@ func processMessage(ctx context.Context, body string) error {
 		payload.UserID, payload.AccountID, payload.Period, len(payload.Transactions))
 
 	// Generate the PDF
-	pdfBytes, err := generatePDF(payload)
+	pdfBytes, err := generatePDF(ctx, payload)
 	if err != nil {
 		return fmt.Errorf("failed to generate PDF: %w", err)
 	}
@@ -130,7 +134,61 @@ func processMessage(ctx context.Context, body string) error {
 	return nil
 }
 
-func generatePDF(payload ReportPayload) ([]byte, error) {
+// formatPeriodLabel converts "2026-02" to "Febrero 2026"
+func formatPeriodLabel(period string) string {
+	months := map[string]string{
+		"01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril",
+		"05": "Mayo", "06": "Junio", "07": "Julio", "08": "Agosto",
+		"09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
+	}
+	parts := strings.Split(period, "-")
+	if len(parts) != 2 {
+		return period
+	}
+	monthName, ok := months[parts[1]]
+	if !ok {
+		return period
+	}
+	return fmt.Sprintf("%s %s", monthName, parts[0])
+}
+
+// formatTimestamp converts RFC3339 to a short date
+func formatTimestamp(ts string) string {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ts[:10] // fallback: first 10 chars
+	}
+	return t.Format("02/01/2006")
+}
+
+// formatTransactionType returns a human-readable transaction type
+func formatTransactionType(txType string) string {
+	switch txType {
+	case "TRANSFER_COMPLETED":
+		return "Transferencia"
+	case "TRANSFER_FAILED":
+		return "Transf. Fallida"
+	case "DEPOSIT_COMPLETED":
+		return "Deposito"
+	case "TRANSFER_SENT":
+		return "Envio"
+	case "TRANSFER_RECEIVED":
+		return "Recepcion"
+	default:
+		return txType
+	}
+}
+
+// truncateString shortens a string to maxLen characters
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-2] + ".."
+}
+
+// generatePDF builds the document layout and returns the bytes
+func generatePDF(ctx context.Context, payload ReportPayload) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(15, 15, 15)
 	pdf.AddPage()
@@ -180,11 +238,11 @@ func generatePDF(payload ReportPayload) ([]byte, error) {
 	} else {
 		// --- Transaction table ---
 		// Table header
-		pdf.SetFont("Arial", "B", 9)
+		pdf.SetFont("Arial", "B", 8)
 		pdf.SetFillColor(30, 80, 50)
 		pdf.SetTextColor(255, 255, 255)
 
-		colWidths := []float64{30, 25, 30, 35, 30, 30}
+		colWidths := []float64{16, 20, 22, 22, 50, 50}
 		headers := []string{"Fecha", "Tipo", "Monto", "Estado", "Origen", "Destino"}
 
 		for i, header := range headers {
@@ -193,7 +251,7 @@ func generatePDF(payload ReportPayload) ([]byte, error) {
 		pdf.Ln(-1)
 
 		// Table rows
-		pdf.SetFont("Arial", "", 8)
+		pdf.SetFont("Arial", "", 7)
 		pdf.SetTextColor(40, 40, 40)
 
 		totalInflows := 0.0
@@ -210,8 +268,8 @@ func generatePDF(payload ReportPayload) ([]byte, error) {
 			dateStr := formatTimestamp(txn.Timestamp)
 			typeStr := formatTransactionType(txn.Type)
 			amountStr := fmt.Sprintf("%.2f %s", txn.Amount, txn.Currency)
-			sourceStr := truncateString(txn.SourceAccountID, 12)
-			destStr := truncateString(txn.DestinationAccountID, 12)
+			sourceStr := txn.SourceAccountID
+			destStr := txn.DestinationAccountID
 
 			pdf.CellFormat(colWidths[0], 7, dateStr, "1", 0, "C", true, 0, "")
 			pdf.CellFormat(colWidths[1], 7, typeStr, "1", 0, "C", true, 0, "")
@@ -219,10 +277,11 @@ func generatePDF(payload ReportPayload) ([]byte, error) {
 			pdf.CellFormat(colWidths[3], 7, txn.Status, "1", 0, "C", true, 0, "")
 			pdf.CellFormat(colWidths[4], 7, sourceStr, "1", 0, "C", true, 0, "")
 			pdf.CellFormat(colWidths[5], 7, destStr, "1", 0, "C", true, 0, "")
+			
 			pdf.Ln(-1)
 
 			// Calculate totals for successful transactions
-			if txn.Status == "SUCCESS" {
+			if txn.Status == "COMPLETED" || txn.Status == "SUCCESS" {
 				if txn.SourceAccountID == payload.AccountID {
 					totalOutflows += txn.Amount
 				}
@@ -239,14 +298,14 @@ func generatePDF(payload ReportPayload) ([]byte, error) {
 			if pdf.GetY() > 260 {
 				pdf.AddPage()
 				// Re-draw header
-				pdf.SetFont("Arial", "B", 9)
+				pdf.SetFont("Arial", "B", 8)
 				pdf.SetFillColor(30, 80, 50)
 				pdf.SetTextColor(255, 255, 255)
 				for i, header := range headers {
 					pdf.CellFormat(colWidths[i], 8, header, "1", 0, "C", true, 0, "")
 				}
 				pdf.Ln(-1)
-				pdf.SetFont("Arial", "", 8)
+				pdf.SetFont("Arial", "", 7)
 				pdf.SetTextColor(40, 40, 40)
 			}
 		}
@@ -284,62 +343,10 @@ func generatePDF(payload ReportPayload) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// formatPeriodLabel converts "2026-02" to "Febrero 2026"
-func formatPeriodLabel(period string) string {
-	months := map[string]string{
-		"01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril",
-		"05": "Mayo", "06": "Junio", "07": "Julio", "08": "Agosto",
-		"09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
-	}
-	parts := strings.Split(period, "-")
-	if len(parts) != 2 {
-		return period
-	}
-	monthName, ok := months[parts[1]]
-	if !ok {
-		return period
-	}
-	return fmt.Sprintf("%s %s", monthName, parts[0])
-}
-
-// formatTimestamp converts RFC3339 to a short date
-func formatTimestamp(ts string) string {
-	t, err := time.Parse(time.RFC3339, ts)
-	if err != nil {
-		return ts[:10] // fallback: first 10 chars
-	}
-	return t.Format("02/01/2006")
-}
-
-// formatTransactionType returns a human-readable transaction type
-func formatTransactionType(txType string) string {
-	switch txType {
-	case "TRANSFER_COMPLETED":
-		return "Transferencia"
-	case "TRANSFER_FAILED":
-		return "Transf. Fallida"
-	case "DEPOSIT_COMPLETED":
-		return "Deposito"
-	default:
-		return txType
-	}
-}
-
-// truncateString shortens a string to maxLen characters
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-2] + ".."
-}
-
+// getEnv reads an environment variable with a fallback
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
-}
-
-func main() {
-	lambda.Start(handler)
 }

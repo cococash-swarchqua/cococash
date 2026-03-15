@@ -32,7 +32,7 @@ resource "aws_ecr_repository" "transaction" {
 # Build and push Docker image to ECR on apply
 resource "null_resource" "transaction_docker_build" {
   triggers = {
-    src_hash        = sha256(join("", [for f in fileset("${path.module}/..", "*.go") : filesha256("${path.module}/../${f}")]))
+    src_hash        = sha256(join("", [for f in sort(fileset("${path.module}/..", "*.go")) : filesha256("${path.module}/../${f}")]))
     dockerfile_hash = filesha256("${path.module}/../Dockerfile")
     gomod_hash      = filesha256("${path.module}/../go.mod")
   }

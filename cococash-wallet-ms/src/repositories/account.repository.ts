@@ -121,6 +121,33 @@ export class AccountRepository {
         await client.query(query, [newBalance, new Date(), accountId]);
     }
 
+    /**
+     * Find all active accounts with pagination
+     * Used by the report generation pipeline (get-accounts Lambda)
+     */
+    async findAllActive(page: number = 1, limit: number = 100): Promise<{ accounts: Account[]; total: number }> {
+        const offset = (page - 1) * limit;
+
+        // Get total count
+        const countQuery = `SELECT COUNT(*) FROM accounts WHERE status = $1`;
+        const countResult = await this.pool.query(countQuery, [AccountStatus.ACTIVE]);
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        // Get paginated results
+        const query = `
+      SELECT * FROM accounts
+      WHERE status = $1
+      ORDER BY created_at ASC
+      LIMIT $2 OFFSET $3
+    `;
+        const result = await this.pool.query(query, [AccountStatus.ACTIVE, limit, offset]);
+
+        return {
+            accounts: result.rows.map((row: any) => this.mapToAccount(row)),
+            total
+        };
+    }
+
     private mapToAccount(row: any): Account {
         return {
             id: row.id,

@@ -83,6 +83,30 @@ variable "sqs_transaction_audit_queue_arn" {
   description = "SQS queue ARN for consuming transfer events"
 }
 
+variable "sqs_report_users_queue_url" {
+  type        = string
+  description = "SQS queue URL for consuming report user batches"
+  default     = ""
+}
+
+variable "sqs_report_users_queue_arn" {
+  type        = string
+  description = "SQS queue ARN for consuming report user batches"
+  default     = ""
+}
+
+variable "sns_report_txns_topic_arn" {
+  type        = string
+  description = "SNS topic ARN for publishing consolidated transaction data"
+  default     = ""
+}
+
+variable "enable_reports" {
+  type        = bool
+  description = "Enable report generation features"
+  default     = true
+}
+
 # -----------------------------------------------
 # DynamoDB Table - Transaction Audit Log
 # PK: user_id, SK: timestamp
@@ -173,7 +197,7 @@ resource "aws_iam_role_policy" "transaction_task_dynamodb" {
   })
 }
 
-# SQS permissions
+# SQS permissions (audit queue + report users queue)
 resource "aws_iam_role_policy" "transaction_task_sqs" {
   name = "${local.service_name}-task-sqs-policy"
   role = aws_iam_role.transaction_task.id
@@ -188,7 +212,28 @@ resource "aws_iam_role_policy" "transaction_task_sqs" {
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes"
         ]
-        Resource = [var.sqs_transaction_audit_queue_arn]
+        Resource = compact([
+          var.sqs_transaction_audit_queue_arn,
+          var.sqs_report_users_queue_arn
+        ])
+      }
+    ]
+  })
+}
+
+# SNS Publish permissions (report consolidated transactions)
+resource "aws_iam_role_policy" "transaction_task_sns" {
+  count = var.enable_reports ? 1 : 0
+  name  = "${local.service_name}-task-sns-policy"
+  role  = aws_iam_role.transaction_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = [var.sns_report_txns_topic_arn]
       }
     ]
   })
@@ -289,7 +334,9 @@ resource "aws_ecs_task_definition" "transaction" {
         { name = "SQS_QUEUE_URL", value = var.sqs_transaction_audit_queue_url },
         { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.transactions.name },
         { name = "AWS_REGION", value = "us-east-1" },
-        { name = "PORT", value = "8080" }
+        { name = "PORT", value = "8080" },
+        { name = "SQS_REPORT_QUEUE_URL", value = var.sqs_report_users_queue_url },
+        { name = "SNS_REPORT_TXNS_TOPIC_ARN", value = var.sns_report_txns_topic_arn }
       ]
 
       logConfiguration = {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
@@ -35,9 +36,12 @@ func main() {
 	// Initialize clients
 	dynamoClient := dynamodb.NewFromConfig(cfg)
 	sqsClient := sqs.NewFromConfig(cfg)
+	snsClient := sns.NewFromConfig(cfg)
 
 	tableName := getEnv("DYNAMODB_TABLE", "cococash-transaction-log")
 	queueURL := getEnv("SQS_QUEUE_URL", "")
+	reportQueueURL := getEnv("SQS_REPORT_QUEUE_URL", "")
+	reportTopicARN := getEnv("SNS_REPORT_TXNS_TOPIC_ARN", "")
 	port := getEnv("PORT", "8080")
 
 	// Initialize repository and handler
@@ -72,6 +76,19 @@ func main() {
 		log.Printf("SQS consumer started, polling queue: %s", queueURL)
 	} else {
 		log.Println("WARNING: SQS_QUEUE_URL not set, consumer disabled")
+	}
+
+	// Start report consumer in background (report generation pipeline)
+	if reportQueueURL != "" && reportTopicARN != "" {
+		reportConsumer := NewReportEventConsumer(sqsClient, snsClient, reportQueueURL, reportTopicARN, repo)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reportConsumer.Start(ctx)
+		}()
+		log.Printf("Report consumer started, polling queue: %s", reportQueueURL)
+	} else {
+		log.Println("WARNING: SQS_REPORT_QUEUE_URL or SNS_REPORT_TXNS_TOPIC_ARN not set, report consumer disabled")
 	}
 
 	// Start HTTP server in background

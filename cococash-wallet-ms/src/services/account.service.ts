@@ -167,4 +167,12 @@ export class AccountService {
 
         return account;
     }
+
+    /**
+     * Get all active accounts with pagination.
+     * Used internally by the report generation pipeline.
+     */
+    async getAllActiveAccounts(page: number = 1, limit: number = 100): Promise<{ accounts: Account[]; total: number }> {
+        return this.accountRepository.findAllActive(page, limit);
+    }
 }

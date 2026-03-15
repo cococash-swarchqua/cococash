@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Transfer from './pages/Transfer';
 import Balance from './pages/Balance';
 import Deposit from './pages/Deposit';
+import Certificates from './pages/Certificates';
 import Layout from './components/Layout';
 
 const PrivateRoute = ({ children }) => {
@@ -57,6 +58,14 @@ function App() {
               <PrivateRoute>
                 <Layout>
                   <Deposit />
+                </Layout>
+              </PrivateRoute>
+            } />
+
+            <Route path="/certificates" element={
+              <PrivateRoute>
+                <Layout>
+                  <Certificates />
                 </Layout>
               </PrivateRoute>
             } />

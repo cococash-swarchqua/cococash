@@ -55,6 +55,24 @@ variable "cognito_user_pool_endpoint" {
   description = "Cognito User Pool endpoint (issuer)"
 }
 
+variable "link_generator_lambda_invoke_arn" {
+  type        = string
+  description = "Link Generator Lambda invoke ARN for API Gateway integration"
+  default     = ""
+}
+
+variable "link_generator_lambda_function_name" {
+  type        = string
+  description = "Link Generator Lambda function name"
+  default     = ""
+}
+
+variable "enable_reports" {
+  type        = bool
+  description = "Enable reports integration features in API Gateway"
+  default     = true
+}
+
 # -----------------------------------------------
 # Security Group for VPC Link
 # -----------------------------------------------
@@ -108,7 +126,7 @@ resource "aws_apigatewayv2_vpc_link" "wallet" {
 resource "aws_apigatewayv2_api" "cococash" {
   name          = "${local.project_name}-api"
   protocol_type = "HTTP"
-  description   = "CocoCash API Gateway - Wallet MS routes"
+  description   = "CocoCash API Gateway - Wallet MS, Transaction MS & Lambda routes"
 
   cors_configuration {
     allow_headers = ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key"]
@@ -124,7 +142,7 @@ resource "aws_apigatewayv2_api" "cococash" {
 }
 
 # -----------------------------------------------
-# Integration - ALB via VPC Link
+# Integration - ALB via VPC Link (wallet-ms)
 # -----------------------------------------------
 resource "aws_apigatewayv2_integration" "wallet_alb" {
   api_id             = aws_apigatewayv2_api.cococash.id
@@ -137,6 +155,32 @@ resource "aws_apigatewayv2_integration" "wallet_alb" {
   payload_format_version = "1.0"
 
   description = "Forward to Wallet ALB via VPC Link"
+}
+
+# -----------------------------------------------
+# Integration - Lambda (link-generator)
+# -----------------------------------------------
+resource "aws_apigatewayv2_integration" "link_generator" {
+  count = var.enable_reports ? 1 : 0
+
+  api_id                 = aws_apigatewayv2_api.cococash.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = var.link_generator_lambda_invoke_arn
+  integration_method     = "POST"
+  payload_format_version = "2.0"
+
+  description = "Forward to Link Generator Lambda"
+}
+
+# Allow API Gateway to invoke link-generator Lambda
+resource "aws_lambda_permission" "api_gw_link_generator" {
+  count = var.enable_reports ? 1 : 0
+
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.link_generator_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.cococash.execution_arn}/*/*"
 }
 
 # -----------------------------------------------
@@ -237,6 +281,31 @@ resource "aws_apigatewayv2_route" "get_account_by_user" {
   api_id    = aws_apigatewayv2_api.cococash.id
   route_key = "GET /v1/accounts/user/{userId}"
   target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+# GET /v1/accounts/all (for get-accounts Lambda / internal use)
+resource "aws_apigatewayv2_route" "get_all_accounts" {
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "GET /v1/accounts/all"
+  target    = "integrations/${aws_apigatewayv2_integration.wallet_alb.id}"
+
+  # No JWT authorizer — internal service-to-service call via IAM
+}
+
+# -----------------------------------------------
+# Routes - Reports (protected)
+# -----------------------------------------------
+
+# GET /v1/reports/{accountId}/download?period=YYYY-MM
+resource "aws_apigatewayv2_route" "get_report_download" {
+  count = var.enable_reports ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.cococash.id
+  route_key = "GET /v1/reports/{accountId}/download"
+  target    = "integrations/${aws_apigatewayv2_integration.link_generator[0].id}"
 
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id

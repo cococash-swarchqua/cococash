@@ -1,0 +1,135 @@
+# -----------------------------------------------
+# CocoCash Link Generator Lambda Infrastructure
+# Generates presigned S3 URLs for bank statement downloads
+# -----------------------------------------------
+
+locals {
+  service_name = "cococash-link-generator"
+}
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# -----------------------------------------------
+# Variables
+# -----------------------------------------------
+variable "s3_bucket_name" {
+  type        = string
+  description = "S3 bucket name for PDF reports"
+}
+
+variable "s3_bucket_arn" {
+  type        = string
+  description = "S3 bucket ARN for PDF reports"
+}
+
+# -----------------------------------------------
+# IAM Role for Lambda
+# -----------------------------------------------
+resource "aws_iam_role" "link_generator_lambda" {
+  name = "${local.service_name}-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = {
+    Project   = "cococash"
+    Component = "link-generator"
+  }
+}
+
+# CloudWatch Logs
+resource "aws_iam_role_policy_attachment" "link_generator_basic_execution" {
+  role       = aws_iam_role.link_generator_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# S3 GetObject + HeadObject (restricted to reportes/* prefix)
+resource "aws_iam_role_policy" "link_generator_permissions" {
+  name = "${local.service_name}-permissions"
+  role = aws_iam_role.link_generator_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:HeadObject"
+        ]
+        Resource = [
+          "${var.s3_bucket_arn}/reportes/*"
+        ]
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------
+# CloudWatch Log Group
+# -----------------------------------------------
+resource "aws_cloudwatch_log_group" "link_generator" {
+  name              = "/aws/lambda/${local.service_name}"
+  retention_in_days = 7
+
+  tags = {
+    Project   = "cococash"
+    Component = "link-generator"
+  }
+}
+
+# -----------------------------------------------
+# Lambda Function
+# -----------------------------------------------
+resource "aws_lambda_function" "link_generator" {
+  function_name = local.service_name
+  role          = aws_iam_role.link_generator_lambda.arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  timeout       = 900 # 15 minutes
+  memory_size   = 128
+
+  # Placeholder — will be replaced by CI/CD or manual zip upload
+  filename         = "${path.module}/bootstrap.zip"
+  source_code_hash = filebase64sha256("${path.module}/bootstrap.zip")
+
+  environment {
+    variables = {
+      S3_BUCKET_NAME = var.s3_bucket_name
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.link_generator]
+
+  tags = {
+    Project   = "cococash"
+    Component = "link-generator"
+  }
+}
+
+# -----------------------------------------------
+# Outputs
+# -----------------------------------------------
+output "lambda_arn" {
+  value       = aws_lambda_function.link_generator.arn
+  description = "Link Generator Lambda ARN"
+}
+
+output "lambda_invoke_arn" {
+  value       = aws_lambda_function.link_generator.invoke_arn
+  description = "Link Generator Lambda invoke ARN (for API Gateway integration)"
+}
+
+output "lambda_function_name" {
+  value       = aws_lambda_function.link_generator.function_name
+  description = "Link Generator Lambda function name"
+}

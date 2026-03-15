@@ -12,7 +12,6 @@ El sistema está diseñado bajo una arquitectura de microservicios orientada a e
 - **Auditoría e Historial (Transaction MS)**: Go (ECS Fargate + Amazon DynamoDB)
 - **Generación de Reportes PDF**: Serverless (EventBridge + SQS + AWS Lambda + S3)
 
-> Para ver el diseño completo de Componentes y Conectores, flujos de red y estructura de Microservicios, revisa el [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## 🚀 Despliegue (Terraform)
 

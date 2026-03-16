@@ -7,7 +7,6 @@
 
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import {
-    TransferInitiatedEvent,
     TransferCompletedEvent,
     TransferFailedEvent
 } from '../../models/transfer.model';
@@ -42,15 +41,6 @@ export class TransferPublisher {
 
         this.transferTopicArn = process.env.SNS_TRANSFER_TOPIC_ARN || '';
         this.accountTopicArn = process.env.SNS_ACCOUNT_TOPIC_ARN || '';
-    }
-
-    /**
-     * Publish transfer.initiated event
-     * RF-09: Event-driven async processing
-     */
-    async publishTransferInitiated(event: TransferInitiatedEvent): Promise<void> {
-        await this.publishToSNS(this.transferTopicArn, event);
-        console.log(`Published transfer.initiated event for transfer ${event.transferId}`);
     }
 
     /**

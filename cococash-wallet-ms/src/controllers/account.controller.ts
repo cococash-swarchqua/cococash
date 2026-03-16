@@ -17,7 +17,15 @@ export class AccountController {
     }
 
     private initializeRoutes(): void {
-        // All account routes require a valid Cognito JWT
+        /**
+         * GET /accounts/all?status=active&page=1&limit=100
+         * Internal endpoint for the report generation pipeline.
+         * NOT protected by JWT — the get-accounts Lambda authenticates
+         * via IAM (execute-api:Invoke). API Gateway route has no authorizer.
+         */
+        this.router.get('/all', this.getAllAccounts.bind(this));
+
+        // All remaining account routes require a valid Cognito JWT
         this.router.use(cognitoAuthMiddleware);
 
         /**
@@ -56,6 +64,31 @@ export class AccountController {
          * userId comes from the JWT — the caller can only deposit to their own account.
          */
         this.router.post('/me/deposit', this.depositToMyAccount.bind(this));
+    }
+
+    /**
+     * GET /accounts/all — list all active accounts (paginated).
+     * Internal endpoint — no JWT required (secured via IAM at API Gateway level).
+     */
+    private async getAllAccounts(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+
+            const result = await this.accountService.getAllActiveAccounts(page, limit);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    accounts: result.accounts,
+                    total: result.total,
+                    page,
+                    limit
+                }
+            });
+        } catch (error) {
+            next(error);
+        }
     }
 
     /**

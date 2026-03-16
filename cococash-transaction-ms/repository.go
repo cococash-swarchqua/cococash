@@ -105,3 +105,47 @@ func (r *TransactionRepository) GetByTransactionID(ctx context.Context, transact
 	return &record, nil
 }
 
+// GetByUserIDAndDateRange queries transactions for a user within a date range
+// Used by the report consumer to fetch monthly transactions
+func (r *TransactionRepository) GetByUserIDAndDateRange(ctx context.Context, userID, fromDate, toDate string) ([]TransactionRecord, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		KeyConditionExpression: aws.String("user_id = :uid AND #ts BETWEEN :start AND :end"),
+		ExpressionAttributeNames: map[string]string{
+			"#ts": "timestamp", // timestamp is a reserved word in DynamoDB
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":uid":   &types.AttributeValueMemberS{Value: userID},
+			":start": &types.AttributeValueMemberS{Value: fromDate},
+			":end":   &types.AttributeValueMemberS{Value: toDate},
+		},
+		ScanIndexForward: aws.Bool(true), // Chronological order
+	}
+
+	var allRecords []TransactionRecord
+
+	// Paginate through all results
+	for {
+		result, err := r.client.Query(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query transactions for user %s in range [%s, %s]: %w",
+				userID, fromDate, toDate, err)
+		}
+
+		var records []TransactionRecord
+		err = attributevalue.UnmarshalListOfMaps(result.Items, &records)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal transaction records: %w", err)
+		}
+
+		allRecords = append(allRecords, records...)
+
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		input.ExclusiveStartKey = result.LastEvaluatedKey
+	}
+
+	return allRecords, nil
+}
+

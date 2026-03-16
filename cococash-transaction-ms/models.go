@@ -29,6 +29,8 @@ type TransferEvent struct {
 	TransferID           string  `json:"transferId"`
 	SourceAccountID      string  `json:"sourceAccountId"`
 	DestinationAccountID string  `json:"destinationAccountId"`
+	SourceUserID         string  `json:"sourceUserId"`
+	DestinationUserID    string  `json:"destinationUserId"`
 	Amount               float64 `json:"amount"`
 	Timestamp            string  `json:"timestamp"`
 	Reason               string  `json:"reason,omitempty"` // For transfer.failed events

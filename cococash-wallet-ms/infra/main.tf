@@ -32,8 +32,8 @@ resource "aws_ecr_repository" "wallet" {
 # Build and push Docker image to ECR on apply
 resource "null_resource" "wallet_docker_build" {
   triggers = {
-    # Rebuild whenever source files change
-    src_hash       = sha256(join("", [for f in fileset("${path.module}/../src", "**/*") : filesha256("${path.module}/../src/${f}")]))
+    # Rebuild whenever source files change (exclude node_modules)
+    src_hash        = sha256(join("", [for f in fileset("${path.module}/../src", "**/*.ts") : filesha256("${path.module}/../src/${f}")]))
     dockerfile_hash = filesha256("${path.module}/../Dockerfile")
     package_hash    = filesha256("${path.module}/../package.json")
   }

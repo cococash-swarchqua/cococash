@@ -36,6 +36,9 @@ const Layout = ({ children }) => {
           <Link to="/balance" className={`block px-4 py-3 rounded-lg transition-colors ${isActive('/balance') ? 'bg-coco-green text-white' : 'hover:bg-gray-800 text-gray-300'}`}>
             Movimientos
           </Link>
+          <Link to="/certificates" className={`block px-4 py-3 rounded-lg transition-colors ${isActive('/certificates') ? 'bg-coco-green text-white' : 'hover:bg-gray-800 text-gray-300'}`}>
+            Certificados
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-gray-800">

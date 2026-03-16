@@ -40,20 +40,13 @@ export interface TransferResponse {
 }
 
 // Domain Events
-export interface TransferInitiatedEvent {
-    eventType: 'transfer.initiated';
-    transferId: string;
-    sourceAccountId: string;
-    destinationAccountId: string;
-    amount: number;
-    timestamp: Date;
-}
-
 export interface TransferCompletedEvent {
     eventType: 'transfer.completed';
     transferId: string;
     sourceAccountId: string;
     destinationAccountId: string;
+    sourceUserId: string;
+    destinationUserId: string;
     amount: number;
     timestamp: Date;
 }
@@ -61,6 +54,11 @@ export interface TransferCompletedEvent {
 export interface TransferFailedEvent {
     eventType: 'transfer.failed';
     transferId: string;
+    sourceAccountId: string;
+    destinationAccountId: string;
+    sourceUserId: string;
+    destinationUserId: string;
     reason: string;
+    amount: number;
     timestamp: Date;
 }

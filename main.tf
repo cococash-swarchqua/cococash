@@ -45,6 +45,64 @@ module "cococash_transaction_infra" {
   sqs_transaction_audit_queue_url = module.cococash_wallet_infra.sqs_transaction_audit_queue_url
   sqs_transaction_audit_queue_arn = module.cococash_wallet_infra.sqs_transaction_audit_queue_arn
 
+  # Report pipeline integration
+  sqs_report_users_queue_url = module.cococash_reports_infra.sqs_report_users_queue_url
+  sqs_report_users_queue_arn = module.cococash_reports_infra.sqs_report_users_queue_arn
+  sns_report_txns_topic_arn  = module.cococash_reports_infra.sns_report_txns_topic_arn
+
+  providers = {
+    aws = aws
+  }
+}
+
+# -----------------------------------------------
+# Report Generation Pipeline
+# -----------------------------------------------
+
+# Get Accounts Lambda (triggered by EventBridge)
+module "cococash_get_accounts" {
+  source = "./cococash-get-accounts/infra"
+
+  api_gateway_url            = module.cococash_api_gateway.api_gateway_url
+  sns_report_users_topic_arn = module.cococash_reports_infra.sns_report_users_topic_arn
+  api_gateway_id             = module.cococash_api_gateway.api_gateway_id
+
+  providers = {
+    aws = aws
+  }
+}
+
+# PDF Maker Lambda + S3 Bucket (triggered by SQS)
+module "cococash_pdf_maker" {
+  source = "./cococash-pdf-maker/infra"
+
+  sqs_report_txns_queue_arn = module.cococash_reports_infra.sqs_report_txns_queue_arn
+  sqs_report_txns_queue_url = module.cococash_reports_infra.sqs_report_txns_queue_url
+
+  providers = {
+    aws = aws
+  }
+}
+
+# Link Generator Lambda (invoked by API Gateway)
+module "cococash_link_generator" {
+  source = "./cococash-link-generator/infra"
+
+  s3_bucket_name = module.cococash_pdf_maker.s3_bucket_name
+  s3_bucket_arn  = module.cococash_pdf_maker.s3_bucket_arn
+
+  providers = {
+    aws = aws
+  }
+}
+
+# Reports Infrastructure (EventBridge, SNS, SQS)
+module "cococash_reports_infra" {
+  source = "./cococash-reports-infra"
+
+  get_accounts_lambda_arn           = module.cococash_get_accounts.lambda_arn
+  get_accounts_lambda_function_name = module.cococash_get_accounts.lambda_function_name
+
   providers = {
     aws = aws
   }
@@ -65,6 +123,10 @@ module "cococash_api_gateway" {
   cognito_user_pool_arn       = module.cococash_auth.user_pool_arn
   cognito_user_pool_client_id = module.cococash_auth.user_pool_client_id
   cognito_user_pool_endpoint  = module.cococash_auth.user_pool_endpoint
+
+  # Link Generator Lambda integration
+  link_generator_lambda_invoke_arn    = module.cococash_link_generator.lambda_invoke_arn
+  link_generator_lambda_function_name = module.cococash_link_generator.lambda_function_name
 
   providers = {
     aws = aws

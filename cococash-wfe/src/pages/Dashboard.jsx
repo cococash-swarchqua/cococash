@@ -47,7 +47,7 @@ const Dashboard = () => {
       </div>
 
       {/* Action Modules */}
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-3 gap-6">
         <Link to="/transfer" className="group">
           <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-coco-green h-full flex flex-col justify-between">
             <div>
@@ -74,6 +74,21 @@ const Dashboard = () => {
             </div>
             <div className="mt-4 text-coco-brown font-medium flex items-center gap-2">
               Ver Historial <span>→</span>
+            </div>
+          </div>
+        </Link>
+
+        <Link to="/certificates" className="group">
+          <div className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-blue-500 h-full flex flex-col justify-between">
+            <div>
+              <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-lg flex items-center justify-center mb-4 text-2xl group-hover:scale-110 transition-transform">
+                📄
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Certificados</h3>
+              <p className="text-gray-500">Descarga tus extractos bancarios mensuales en formato PDF.</p>
+            </div>
+            <div className="mt-4 text-blue-500 font-medium flex items-center gap-2">
+              Ver Extractos <span>→</span>
             </div>
           </div>
         </Link>

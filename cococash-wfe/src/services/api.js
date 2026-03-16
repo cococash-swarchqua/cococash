@@ -78,6 +78,14 @@ export function getTransferHistory(accountId) {
   return request(`/v1/transfers/account/${accountId}`);
 }
 
+/**
+ * GET /v1/reports/:accountId/download?period=YYYY-MM
+ * Requests a presigned URL for downloading the monthly bank statement PDF.
+ */
+export function getReportDownloadUrl(accountId, period) {
+  return request(`/v1/reports/${accountId}/download?period=${period}`);
+}
+
 // -----------------------------------------------
 // Deposits
 // -----------------------------------------------

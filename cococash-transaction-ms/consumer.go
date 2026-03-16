@@ -111,7 +111,7 @@ func (c *EventConsumer) processMessage(ctx context.Context, msg sqsTypes.Message
 	if event.EventType == "transfer.completed" {
 		// Record for sender
 		senderRecord := TransactionRecord{
-			UserID:               event.SourceAccountID, // Partition key
+			UserID:               event.SourceUserID, // Partition key — Cognito UUID
 			Timestamp:            now,
 			TransactionID:        transactionID + "-debit",
 			TransferID:           event.TransferID,
@@ -132,7 +132,7 @@ func (c *EventConsumer) processMessage(ctx context.Context, msg sqsTypes.Message
 
 		// Record for receiver
 		receiverRecord := TransactionRecord{
-			UserID:               event.DestinationAccountID,
+			UserID:               event.DestinationUserID, // Partition key — Cognito UUID
 			Timestamp:            now,
 			TransactionID:        transactionID + "-credit",
 			TransferID:           event.TransferID,
@@ -153,7 +153,7 @@ func (c *EventConsumer) processMessage(ctx context.Context, msg sqsTypes.Message
 	} else if event.EventType == "transfer.failed" {
 		// Only record for sender (failed)
 		failedRecord := TransactionRecord{
-			UserID:               event.SourceAccountID,
+			UserID:               event.SourceUserID, // Partition key — Cognito UUID
 			Timestamp:            now,
 			TransactionID:        transactionID + "-failed",
 			TransferID:           event.TransferID,

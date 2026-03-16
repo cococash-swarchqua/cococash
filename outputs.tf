@@ -59,3 +59,24 @@ output "wfe_alb_dns" {
   value       = module.cococash_wfe.wfe_alb_dns
   description = "Frontend ALB DNS name (public URL)"
 }
+
+# Reports Pipeline
+output "s3_reports_bucket" {
+  value       = module.cococash_pdf_maker.s3_bucket_name
+  description = "S3 bucket name for PDF reports"
+}
+
+output "get_accounts_lambda_arn" {
+  value       = module.cococash_get_accounts.lambda_arn
+  description = "Get Accounts Lambda ARN"
+}
+
+output "pdf_maker_lambda_arn" {
+  value       = module.cococash_pdf_maker.lambda_arn
+  description = "PDF Maker Lambda ARN"
+}
+
+output "link_generator_lambda_arn" {
+  value       = module.cococash_link_generator.lambda_arn
+  description = "Link Generator Lambda ARN"
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.git/
+.env
+npm-debug.log
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+infra/
